@@ -26,22 +26,19 @@ jobs:
       - name: Preparar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: Activar pnpm
-        run: corepack enable
+          node-version: 24
 
       - name: Instalar dependencias
-        run: pnpm install --frozen-lockfile
+        run: npm install
 
       - name: Validar prototipo
         run: |
-          pnpm run lint
-          pnpm run typecheck
-          pnpm run test
+          npm run lint
+          npm run typecheck
+          npm run test
 
       - name: Construir sitio estatico
-        run: pnpm run build
+        run: npm run build
 
       - name: Subir artefacto de Pages
         uses: actions/upload-pages-artifact@v3
