@@ -1,0 +1,17 @@
+:root {
+  --flux-source: "figma-reference-fallback";
+  --flux-brand-primary: #003c7c;
+  --flux-brand-secondary: #00a7d8;
+  --flux-accent: #c7dd2f;
+  --flux-bg: #f4f7fb;
+  --flux-surface: #ffffff;
+  --flux-surface-soft: #eef6fb;
+  --flux-ink: #13243a;
+  --flux-muted: #66758a;
+  --flux-line: #d6e0eb;
+  --flux-ok: #138a63;
+  --flux-warn: #b56a00;
+  --flux-bad: #c83232;
+  --flux-info: #006dc7;
+  --flux-radius: 12px;
+}
