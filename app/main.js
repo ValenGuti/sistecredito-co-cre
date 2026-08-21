@@ -1,6 +1,6 @@
 import { clearAuthSession, createRegisteredAuthUser, loadAuthSession, loadAuthUsers, roleLabels, saveAuthSession, saveAuthUsers, updateAuthUser, validateLogin } from "../src/auth.mjs";
 import { approveFromStore, approveSyntheticCalibration, completeCommunityProfile, createMission, createRealSyntheticComparison, createRegisteredParticipant, duplicateMission, loadState, proposeSyntheticCalibration, recordBehaviorEvent, rejectParticipation, rejectSyntheticCalibration, resetState, revertSyntheticCalibration, runSyntheticSimulation, sendInvitations, setRole, setSessionRole, submitMission } from "../src/store.mjs";
-import { detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, recommendInvitations, separateEvidenceMetrics, summarizeBehaviorEvents } from "../src/domain.mjs";
+import { buildParticipantResponseExport, detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, participantResponseExportToCsv, recommendInvitations, separateEvidenceMetrics, summarizeBehaviorEvents } from "../src/domain.mjs";
 import { percentage } from "../src/synthetic-aggregation.mjs";
 import { cocreaAllyQuestions, cocreaClientQuestions, cocreaCollaboratorQuestions, defaultSyntheticTemplate, summarizeSyntheticSimulation, syntheticDisclaimer } from "../src/synthetic-engine.mjs";
 
@@ -475,6 +475,16 @@ function renderProfile(participant) {
         <h3>Insignias</h3>
         <div class="pill-row">${(participant.badges.length ? participant.badges : ["Nuevo cocreador"]).map((badge) => `<span class="pill info">${badge}</span>`).join("")}</div>
       </div>
+    </section>
+    <section class="card" style="margin-top:1rem">
+      <p class="demo-tag">Portabilidad de la demo</p>
+      <h2>Exportar mis respuestas</h2>
+      <p class="muted">Descarga tus participaciones para compartirlas por un canal corporativo autorizado. El archivo no incluye contrasenas ni informacion financiera.</p>
+      <div class="pill-row">
+        <button data-action="export-responses-json" ${history.length ? "" : "disabled"}>Descargar JSON</button>
+        <button class="secondary" data-action="export-responses-csv" ${history.length ? "" : "disabled"}>Descargar CSV</button>
+      </div>
+      ${history.length ? `<p class="muted">Se exportaran ${history.length} participacion(es) del usuario actual.</p>` : `<p class="empty">Completa una mision para habilitar la exportacion.</p>`}
     </section>
     <section class="card reward-strip" style="margin-top:1rem">
       <div>
@@ -1268,6 +1278,18 @@ function bindEvents(app) {
     renderApp();
   });
   app.querySelector("[data-action='go-home']")?.addEventListener("click", () => { selectedMissionId = null; view = "inicio"; renderApp(); });
+  app.querySelector("[data-action='export-responses-json']")?.addEventListener("click", () => {
+    const participant = currentParticipant();
+    const exportData = buildParticipantResponseExport(state, participant.id, new Date().toISOString());
+    downloadTextFile(`respuestas-cocrea-${participant.id}.json`, JSON.stringify(exportData, null, 2), "application/json;charset=utf-8");
+    toast("Respuestas exportadas en formato JSON.");
+  });
+  app.querySelector("[data-action='export-responses-csv']")?.addEventListener("click", () => {
+    const participant = currentParticipant();
+    const exportData = buildParticipantResponseExport(state, participant.id, new Date().toISOString());
+    downloadTextFile(`respuestas-cocrea-${participant.id}.csv`, participantResponseExportToCsv(exportData), "text/csv;charset=utf-8");
+    toast("Respuestas exportadas en formato CSV.");
+  });
   app.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("change", () => { filters[input.dataset.filter] = input.value; renderApp(); }));
   app.querySelector("[data-action='clear-filters']")?.addEventListener("click", () => { filters = { duration: "todas", type: "todas", benefit: "todos" }; renderApp(); });
   app.querySelectorAll("[data-approve]").forEach((button) => button.addEventListener("click", () => { state = approveFromStore(state, button.dataset.approve); toast("Participacion aprobada. Puntos y XP entregados."); renderApp(); }));
@@ -1445,6 +1467,18 @@ function currentParticipant() {
     };
   }
   return state.participants.find((p) => p.id === state.currentParticipantId) || state.participants[0];
+}
+
+function downloadTextFile(fileName, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function isCurrentAdmin() {

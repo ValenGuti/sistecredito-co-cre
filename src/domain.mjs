@@ -202,6 +202,45 @@ export function separateEvidenceMetrics(state) {
   };
 }
 
+export function buildParticipantResponseExport(state, participantId, exportedAt) {
+  const participant = state.participants.find((item) => item.id === participantId);
+  const participations = state.participations.filter((item) => item.participantId === participantId);
+  return {
+    exportVersion: 1,
+    exportedAt,
+    notice: "Archivo de demostracion. No contiene credenciales ni informacion financiera.",
+    participant: {
+      id: participantId,
+      name: participant?.name || "Participante demo",
+      type: participant?.type || "participante",
+    },
+    responses: participations.map((participation) => {
+      const mission = state.missions.find((item) => item.id === participation.missionId);
+      const submission = state.submissions.find((item) => item.participationId === participation.id);
+      return {
+        participationId: participation.id,
+        missionId: participation.missionId,
+        missionName: mission?.name || "Mision",
+        missionType: participation.missionType || mission?.type || "Sin tipo",
+        status: participation.status,
+        submittedAt: participation.createdAt,
+        updatedAt: participation.updatedAt,
+        durationMinutes: participation.durationMinutes,
+        rating: participation.rating,
+        comments: participation.comments || "",
+        evidence: participation.evidence || "",
+        answers: submission?.answers || [],
+      };
+    }),
+  };
+}
+
+export function participantResponseExportToCsv(exportData) {
+  const header = ["participationId", "missionId", "missionName", "missionType", "status", "submittedAt", "updatedAt", "durationMinutes", "rating", "comments", "evidence", "answers"];
+  const rows = exportData.responses.map((item) => header.map((key) => csvCell(key === "answers" ? item.answers.join(" | ") : item[key])).join(","));
+  return [header.join(","), ...rows].join("\n");
+}
+
 export function now() {
   return new Date().toISOString();
 }
@@ -216,6 +255,11 @@ function countBy(items, getKey) {
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
+}
+
+function csvCell(value) {
+  const text = value == null ? "" : String(value);
+  return /[\",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 function daysBefore(date, days) {

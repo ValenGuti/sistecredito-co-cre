@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { approveParticipation, calculateLevel, changeParticipationStatus, detectFatigue, filterEligibleParticipants, recommendInvitations, summarizeBehaviorEvents } from "../src/domain.mjs";
+import { approveParticipation, buildParticipantResponseExport, calculateLevel, changeParticipationStatus, detectFatigue, filterEligibleParticipants, participantResponseExportToCsv, recommendInvitations, summarizeBehaviorEvents } from "../src/domain.mjs";
 import { createSeedState } from "../src/seed-data.mjs";
 
 export function runDomainTests() {
@@ -37,4 +37,13 @@ export function runDomainTests() {
   assert.ok(behavior.totalClicks > 0);
   assert.equal(behavior.topButtons[0][0], "Consultar ahora");
   assert.ok(behavior.heatmapPoints.every((point) => point.x >= 0 && point.x <= 100));
+
+  const exported = buildParticipantResponseExport(state, "ali_02", "2026-08-21T12:00:00.000Z");
+  assert.equal(exported.participant.id, "ali_02");
+  assert.ok(exported.responses.length > 0);
+  assert.ok(exported.responses.every((item) => Array.isArray(item.answers)));
+  assert.equal(Object.hasOwn(exported.participant, "password"), false);
+  const csv = participantResponseExportToCsv(exported);
+  assert.match(csv, /missionName/);
+  assert.match(csv, /Mejoremos la experiencia de Credinet/);
 }
