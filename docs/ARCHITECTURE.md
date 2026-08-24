@@ -6,7 +6,7 @@ El prototipo esta construido como una aplicacion web local sin dependencias exte
 
 - `app/`: interfaz, estilos y comportamiento del navegador.
 - `src/`: datos seed, repositorio local y reglas puras de negocio.
-- `src/synthetic-*.mjs`: arquetipos, prompts y motor local del laboratorio sintetico para clientes, aliados y colaboradores.
+- `src/synthetic-*.mjs`: codigo historico de compatibilidad; no se expone en la navegacion actual.
 - `tests/`: pruebas unitarias e integracion del flujo principal.
 - `scripts/`: servidor local, build, lint y verificacion.
 
@@ -47,7 +47,7 @@ Cada registro relevante contiene identificador, fechas y estados tipados por con
 - Funciones puras para nivel, puntos, XP, fatiga, elegibilidad y estados.
 - Adaptadores simulados para invitaciones, enlaces beta y beneficios.
 - Motor sintetico local deterministico, sin llamadas externas ni secretos.
-- Separacion explicita entre evidencia real, exploracion sintetica y datos de demostracion.
+- Las metricas visibles del dashboard se calculan desde participantes, misiones y participaciones de la plataforma.
 - Copia en espanol de Colombia y mensajes visibles de voluntariedad.
 - UI responsive con foco mobile-first para participantes y desktop para administracion.
 
@@ -69,3 +69,4 @@ Cada registro relevante contiene identificador, fechas y estados tipados por con
 - IA para laboratorio sintetico: usar un backend seguro que consuma el contrato de `src/synthetic-prompts.mjs`; nunca llamar servicios con claves desde el navegador.
 
 Estas integraciones no estan implementadas en esta version y se muestran como enlaces o acciones de demostracion.
+

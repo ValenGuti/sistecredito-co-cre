@@ -28,6 +28,66 @@ export function levelProgress(xp) {
   return Math.round(((xp - level.minXp) / (level.nextXp - level.minXp)) * 100);
 }
 
+export const MISSION_STATES = ["creado", "reclutando", "activo", "cerrado", "cancelado"];
+
+export function normalizeMissionStatus(status) {
+  return ({ borrador: "creado", activa: "activo", cerrada: "cerrado", cancelada: "cancelado" })[status] || (MISSION_STATES.includes(status) ? status : "creado");
+}
+
+export function missionStateActions(status) {
+  const normalized = normalizeMissionStatus(status);
+  return {
+    creado: ["detalle", "editar", "duplicar", "seleccionar", "enviar", "cancelar"],
+    reclutando: ["detalle", "duplicar", "seleccionar", "enviar", "activar", "cancelar"],
+    activo: ["avance", "duplicar", "cerrar"],
+    cerrado: ["resultados", "duplicar"],
+    cancelado: ["detalle", "duplicar"],
+  }[normalized];
+}
+
+export function transitionMissionStatus(mission, nextStatus) {
+  const current = normalizeMissionStatus(mission.status);
+  const allowed = { creado: ["reclutando", "cancelado"], reclutando: ["activo", "cancelado"], activo: ["cerrado"], cerrado: [], cancelado: [] };
+  if (!allowed[current].includes(nextStatus)) throw new Error(`No es posible pasar una mision de ${current} a ${nextStatus}`);
+  return { ...mission, status: nextStatus, updatedAt: now(), ...(nextStatus === "cerrado" ? { closedAt: now() } : {}) };
+}
+
+export function missionExecutionAverage(missions, limit = 30) {
+  const durations = missions
+    .filter((mission) => normalizeMissionStatus(mission.status) === "cerrado" && mission.startDate && (mission.closedAt || mission.deadline))
+    .slice(-limit)
+    .map((mission) => Math.max(0, (new Date(mission.closedAt || mission.deadline) - new Date(mission.startDate)) / 86400000))
+    .filter(Number.isFinite);
+  return { count: durations.length, days: durations.length ? Number((durations.reduce((sum, value) => sum + value, 0) / durations.length).toFixed(1)) : null };
+}
+
+export function missionSummary(state, missionId) {
+  const invitations = state.invitations.filter((item) => item.missionId === missionId);
+  const participations = state.participations.filter((item) => item.missionId === missionId);
+  const invited = invitations.length;
+  const accepted = invitations.filter((item) => item.status === "aceptada").length;
+  const started = participations.length;
+  const completed = participations.filter((item) => ["pendiente_revision", "aprobada", "rechazada"].includes(item.status)).length;
+  return { invited, accepted, started, completed, notCompleted: Math.max(0, Math.max(accepted, started) - completed), acceptanceRate: invited ? Math.round((accepted / invited) * 100) : 0, completionRate: started ? Math.round((completed / started) * 100) : 0 };
+}
+
+export const feedbackQualityAnalyzer = {
+  analyze(participation, submission) {
+    const answers = submission?.answers || [];
+    const textLength = answers.join(" ").trim().length + String(participation.comments || "").trim().length;
+    const specificity = Math.min(35, Math.round(textLength / 12));
+    const completeness = Math.min(35, answers.filter((answer) => String(answer).trim().length >= 8).length * 12);
+    const evidence = participation.evidence ? 15 : 0;
+    const rating = Math.min(15, (Number(participation.rating) || 0) * 3);
+    return Math.min(100, specificity + completeness + evidence + rating);
+  },
+};
+
+export function analyzeFeedbackQuality(participations, submissions, analyzer = feedbackQualityAnalyzer) {
+  const scores = participations.map((participation) => analyzer.analyze(participation, submissions.find((item) => item.participationId === participation.id)));
+  return { count: scores.length, score: scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null, provisional: analyzer === feedbackQualityAnalyzer };
+}
+
 export function assignExperience(participant, xp) {
   const nextXp = Math.max(0, participant.xp + Math.max(0, xp));
   return { ...participant, xp: nextXp, level: calculateLevel(nextXp).name };
@@ -80,10 +140,11 @@ export function matchParticipant(participant, mission) {
   const reasons = [];
   if (participant.status === "pausado") reasons.push("Tiene invitaciones pausadas temporalmente.");
   if (participant.status === "suspendido") reasons.push("No esta disponible para nuevas misiones.");
-  if (mission.audience !== "ambos" && participant.type !== mission.audience.slice(0, -1)) {
+  if (mission.audience && mission.audience !== "ambos" && participant.type !== mission.audience.slice(0, -1)) {
     reasons.push(participant.type === "cliente" ? "Esta mision esta dirigida a aliados." : "Esta mision esta dirigida a clientes.");
   }
-  if (participant.levelRank < mission.minLevelRank) reasons.push(`Requiere nivel minimo ${mission.minLevel}.`);
+  if (mission.levels?.length && !mission.levels.includes(participant.level)) reasons.push("El nivel no esta habilitado para esta mision.");
+  else if (!mission.levels?.length && participant.levelRank < mission.minLevelRank) reasons.push(`Requiere nivel minimo ${mission.minLevel}.`);
   const required = mission.requiredProfile || {};
   if (required.os?.length && !required.os.includes(participant.device.os)) reasons.push(`Requiere sistema ${required.os.join(" o ")}.`);
   if (required.roles?.length && !required.roles.includes(participant.allyProfile?.role)) reasons.push("El rol del comercio no coincide con el perfil requerido.");
@@ -209,28 +270,11 @@ export function buildParticipantResponseExport(state, participantId, exportedAt)
     exportVersion: 1,
     exportedAt,
     notice: "Archivo de demostracion. No contiene credenciales ni informacion financiera.",
-    participant: {
-      id: participantId,
-      name: participant?.name || "Participante demo",
-      type: participant?.type || "participante",
-    },
+    participant: { id: participantId, name: participant?.name || "Participante demo", type: participant?.type || "participante" },
     responses: participations.map((participation) => {
       const mission = state.missions.find((item) => item.id === participation.missionId);
       const submission = state.submissions.find((item) => item.participationId === participation.id);
-      return {
-        participationId: participation.id,
-        missionId: participation.missionId,
-        missionName: mission?.name || "Mision",
-        missionType: participation.missionType || mission?.type || "Sin tipo",
-        status: participation.status,
-        submittedAt: participation.createdAt,
-        updatedAt: participation.updatedAt,
-        durationMinutes: participation.durationMinutes,
-        rating: participation.rating,
-        comments: participation.comments || "",
-        evidence: participation.evidence || "",
-        answers: submission?.answers || [],
-      };
+      return { participationId: participation.id, missionId: participation.missionId, missionName: mission?.name || "Mision", missionType: participation.missionType || mission?.type || "Sin tipo", status: participation.status, submittedAt: participation.createdAt, updatedAt: participation.updatedAt, durationMinutes: participation.durationMinutes, rating: participation.rating, comments: participation.comments || "", evidence: participation.evidence || "", answers: submission?.answers || [] };
     }),
   };
 }
@@ -259,7 +303,7 @@ function countBy(items, getKey) {
 
 function csvCell(value) {
   const text = value == null ? "" : String(value);
-  return /[\",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 function daysBefore(date, days) {
@@ -267,3 +311,4 @@ function daysBefore(date, days) {
   copy.setDate(copy.getDate() - days);
   return copy;
 }
+

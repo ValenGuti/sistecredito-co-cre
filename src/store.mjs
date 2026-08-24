@@ -1,4 +1,4 @@
-import { approveParticipation, cryptoId, now } from "./domain.mjs";
+import { approveParticipation, cryptoId, normalizeMissionStatus, now, transitionMissionStatus } from "./domain.mjs";
 import { createSeedState } from "./seed-data.mjs";
 import { initialSyntheticArchetypes } from "./synthetic-archetypes.mjs";
 import { approveCalibrationProposal, applyCalibrationProposal, createCalibrationProposal, rejectCalibrationProposal, revertCalibration, submitCalibrationProposal } from "./synthetic-calibration.mjs";
@@ -9,9 +9,9 @@ import { initialSyntheticCohorts, initialSyntheticProfileVersions, initialSynthe
 const KEY = "sistecredito-cocrea-state";
 
 export function loadState() {
-  if (typeof localStorage === "undefined") return createSeedState();
+  if (typeof localStorage === "undefined") return normalizeState(createSeedState());
   const stored = localStorage.getItem(KEY);
-  if (!stored) return saveState(createSeedState());
+  if (!stored) return saveState(normalizeState(createSeedState()));
   try {
     return normalizeState(JSON.parse(stored));
   } catch {
@@ -198,7 +198,7 @@ export function createMission(state, form) {
     description: form.description.trim(),
     internalObjective: form.internalObjective.trim(),
     type: form.type,
-    audience: form.audience,
+    audience: form.audience || "ambos",
     startDate: form.startDate,
     deadline: form.deadline,
     durationMinutes: Number(form.durationMinutes || 20),
@@ -208,13 +208,13 @@ export function createMission(state, form) {
     xp: Number(form.xp || 80),
     minLevel: form.minLevel,
     minLevelRank: ["Explorador", "Cocreador", "Especialista", "Embajador"].indexOf(form.minLevel),
+    levels: form.levels?.length ? form.levels : ["Explorador", "Cocreador", "Especialista", "Embajador"],
     requiredProfile: form.requiredProfile,
     instructions: form.instructions.trim(),
     questions: form.questions.filter(Boolean).map((label, index) => ({ id: `q_${index}`, label, type: "text" })),
-    confidentiality: form.confidentiality,
     recording: form.recording,
     channel: form.channel,
-    status: form.publish ? "reclutando" : "borrador",
+    status: form.publish ? "reclutando" : "creado",
     owner: form.owner.trim(),
     budget: Number(form.budget || points * Number(form.requiredParticipants || 10)),
     invited: 0,
@@ -224,6 +224,42 @@ export function createMission(state, form) {
     updatedAt: now(),
   };
   return saveState({ ...state, missions: [mission, ...state.missions] });
+}
+
+export function updateMissionDetails(state, missionId, form) {
+  return saveState({
+    ...state,
+    missions: state.missions.map((mission) => mission.id === missionId ? {
+      ...mission,
+      name: form.name.trim(),
+      description: form.description.trim(),
+      internalObjective: form.internalObjective.trim(),
+      type: form.type,
+      owner: form.owner.trim(),
+      startDate: form.startDate,
+      deadline: form.deadline,
+      durationMinutes: Number(form.durationMinutes || mission.durationMinutes),
+      requiredParticipants: Number(form.requiredParticipants || mission.requiredParticipants),
+      benefit: form.benefit.trim(),
+      points: Number(form.points || mission.points),
+      xp: Number(form.xp || mission.xp),
+      levels: form.levels?.length ? form.levels : mission.levels,
+      instructions: form.instructions.trim(),
+      questions: form.questions.filter(Boolean).map((label, index) => ({ id: `q_${index}`, label, type: "text" })),
+      recording: form.recording,
+      channel: form.channel,
+      budget: Number(form.budget || mission.budget),
+      updatedAt: now(),
+    } : mission),
+  });
+}
+
+export function updateMissionStatus(state, missionId, nextStatus) {
+  return saveState({
+    ...state,
+    missions: state.missions.map((mission) => mission.id === missionId ? transitionMissionStatus(mission, nextStatus) : mission),
+    auditEvents: [...state.auditEvents, { id: cryptoId("audit"), actor: "Administrador demo", action: `cambio_mision_${nextStatus}`, targetId: missionId, createdAt: now() }],
+  });
 }
 
 export function sendInvitations(state, missionId, participantIds, channel) {
@@ -240,7 +276,7 @@ export function sendInvitations(state, missionId, participantIds, channel) {
     ...state,
     invitations: [...state.invitations, ...invitations],
     missions: state.missions.map((mission) =>
-      mission.id === missionId ? { ...mission, invited: mission.invited + invitations.length, updatedAt: now() } : mission,
+      mission.id === missionId ? { ...mission, status: "reclutando", invited: mission.invited + invitations.length, updatedAt: now() } : mission,
     ),
     auditEvents: [...state.auditEvents, { id: cryptoId("audit"), actor: "Administrador demo", action: "envio_invitaciones", targetId: missionId, createdAt: now() }],
   });
@@ -249,7 +285,7 @@ export function sendInvitations(state, missionId, participantIds, channel) {
 export function duplicateMission(state, missionId) {
   const mission = state.missions.find((item) => item.id === missionId);
   if (!mission) return state;
-  const copy = { ...mission, id: cryptoId("mis"), name: `${mission.name} (copia)`, status: "borrador", invited: 0, accepted: 0, completed: 0, createdAt: now(), updatedAt: now() };
+  const copy = { ...mission, id: cryptoId("mis"), name: `${mission.name} (copia)`, status: "creado", invited: 0, accepted: 0, completed: 0, createdAt: now(), updatedAt: now() };
   return saveState({ ...state, missions: [copy, ...state.missions] });
 }
 
@@ -372,6 +408,8 @@ function normalizeState(state) {
       : mission;
     return {
       ...normalizedMission,
+      status: normalizeMissionStatus(normalizedMission.status),
+      levels: normalizedMission.levels?.length ? normalizedMission.levels : [normalizedMission.minLevel || "Explorador"],
       participantMode: normalizedMission.participantMode || "real",
       evidencePolicy: normalizedMission.evidencePolicy || {
         evidenceType: "realEvidence",
@@ -440,3 +478,4 @@ function updateModelQuality(state, comparison) {
     thresholds: { moderate: 0.68, high: 0.86, minimumComparisonsForHigh: 8 },
   };
 }
+

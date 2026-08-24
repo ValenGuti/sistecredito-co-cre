@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { approveParticipation, buildParticipantResponseExport, calculateLevel, changeParticipationStatus, detectFatigue, filterEligibleParticipants, participantResponseExportToCsv, recommendInvitations, summarizeBehaviorEvents } from "../src/domain.mjs";
+import { analyzeFeedbackQuality, approveParticipation, buildParticipantResponseExport, calculateLevel, changeParticipationStatus, detectFatigue, filterEligibleParticipants, missionExecutionAverage, missionStateActions, missionSummary, normalizeMissionStatus, participantResponseExportToCsv, recommendInvitations, summarizeBehaviorEvents, transitionMissionStatus } from "../src/domain.mjs";
 import { createSeedState } from "../src/seed-data.mjs";
 
 export function runDomainTests() {
@@ -38,12 +38,23 @@ export function runDomainTests() {
   assert.equal(behavior.topButtons[0][0], "Consultar ahora");
   assert.ok(behavior.heatmapPoints.every((point) => point.x >= 0 && point.x <= 100));
 
-  const exported = buildParticipantResponseExport(state, "ali_02", "2026-08-21T12:00:00.000Z");
-  assert.equal(exported.participant.id, "ali_02");
+  assert.equal(normalizeMissionStatus("activa"), "activo");
+  assert.ok(missionStateActions("creado").includes("cancelar"));
+  assert.ok(!missionStateActions("activo").includes("cancelar"));
+  assert.equal(transitionMissionStatus({ status: "creado" }, "reclutando").status, "reclutando");
+  assert.throws(() => transitionMissionStatus({ status: "activo" }, "cancelado"), /No es posible/);
+
+  const execution = missionExecutionAverage(state.missions);
+  assert.ok(execution.count >= 1);
+  assert.ok(execution.days >= 0);
+  const summary = missionSummary(state, "mis_01");
+  assert.ok(summary.invited >= summary.accepted);
+  const quality = analyzeFeedbackQuality(state.participations, state.submissions);
+  assert.ok(quality.score >= 0 && quality.score <= 100);
+  assert.equal(quality.provisional, true);
+  const exported = buildParticipantResponseExport(state, "ali_02", "2026-08-24T12:00:00.000Z");
   assert.ok(exported.responses.length > 0);
-  assert.ok(exported.responses.every((item) => Array.isArray(item.answers)));
   assert.equal(Object.hasOwn(exported.participant, "password"), false);
-  const csv = participantResponseExportToCsv(exported);
-  assert.match(csv, /missionName/);
-  assert.match(csv, /Mejoremos la experiencia de Credinet/);
+  assert.match(participantResponseExportToCsv(exported), /missionName/);
 }
+

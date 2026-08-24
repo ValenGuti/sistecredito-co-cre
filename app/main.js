@@ -1,6 +1,6 @@
 import { clearAuthSession, createRegisteredAuthUser, loadAuthSession, loadAuthUsers, roleLabels, saveAuthSession, saveAuthUsers, updateAuthUser, validateLogin } from "../src/auth.mjs";
-import { approveFromStore, approveSyntheticCalibration, completeCommunityProfile, createMission, createRealSyntheticComparison, createRegisteredParticipant, duplicateMission, loadState, proposeSyntheticCalibration, recordBehaviorEvent, rejectParticipation, rejectSyntheticCalibration, resetState, revertSyntheticCalibration, runSyntheticSimulation, sendInvitations, setRole, setSessionRole, submitMission } from "../src/store.mjs";
-import { buildParticipantResponseExport, detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, participantResponseExportToCsv, recommendInvitations, separateEvidenceMetrics, summarizeBehaviorEvents } from "../src/domain.mjs";
+import { approveFromStore, approveSyntheticCalibration, completeCommunityProfile, createMission, createRealSyntheticComparison, createRegisteredParticipant, duplicateMission, loadState, proposeSyntheticCalibration, recordBehaviorEvent, rejectParticipation, rejectSyntheticCalibration, resetState, revertSyntheticCalibration, runSyntheticSimulation, sendInvitations, setRole, setSessionRole, submitMission, updateMissionDetails, updateMissionStatus } from "../src/store.mjs";
+import { LEVELS, analyzeFeedbackQuality, buildParticipantResponseExport, detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, missionExecutionAverage, missionStateActions, missionSummary, participantResponseExportToCsv, summarizeBehaviorEvents } from "../src/domain.mjs";
 import { percentage } from "../src/synthetic-aggregation.mjs";
 import { cocreaAllyQuestions, cocreaClientQuestions, cocreaCollaboratorQuestions, defaultSyntheticTemplate, summarizeSyntheticSimulation, syntheticDisclaimer } from "../src/synthetic-engine.mjs";
 
@@ -26,6 +26,11 @@ let generatedCredentials = null;
 let profileConsentError = "";
 let adminParticipantQuery = "";
 let profileMenuOpen = false;
+let utilityPanel = null;
+let missionQuery = "";
+let missionStatusFilter = "todos";
+let selectedAdminMissionId = null;
+let editingMissionId = null;
 let loginDraft = {
   email: "",
   password: "",
@@ -43,8 +48,8 @@ let passwordDraft = {
 };
 let communityProfileDraft = {
   city: "",
-  department: "",
-  municipality: "",
+  department: "Antioquia",
+  municipality: "Medellin",
   age: "",
   gender: "M",
   digitalExperience: "Basica",
@@ -59,22 +64,27 @@ let communityProfileDraft = {
 
 const participantTabs = [
   ["inicio", "Inicio"],
-  ["catalogo", "Catalogo"],
+  ["catalogo", "Misiones"],
   ["redimir", "Redimir puntos"],
   ["perfil", "Perfil"],
   ["impacto", "Tu voz genera cambios"],
 ];
 const adminTabs = [
   ["admin-dashboard", "Dashboard"],
-  ["admin-laboratorio", "Laboratorio sintetico"],
-  ["admin-participantes", "Participantes"],
   ["admin-misiones", "Misiones"],
-  ["admin-crear", "Crear mision"],
-  ["admin-invitaciones", "Invitaciones"],
   ["admin-comunidad", "Comunidad"],
-  ["admin-revision", "Revision"],
-  ["admin-comportamiento", "Comportamiento"],
+  ["admin-comportamiento", "Analitica"],
+  ["admin-configuracion", "Configuracion"],
 ];
+
+const COLOMBIA_LOCATIONS = {
+  Antioquia: ["Medellin", "Bello", "Envigado", "Itagui", "Otro"],
+  Atlantico: ["Barranquilla", "Soledad", "Malambo", "Otro"],
+  "Bogota D.C.": ["Bogota", "Otro"],
+  "Valle del Cauca": ["Cali", "Palmira", "Jamundi", "Otro"],
+  Otro: ["Otro"],
+};
+const INTERNAL_AREAS = ["Mercadeo", "Producto", "Tecnologia", "Experiencia", "Operaciones", "Riesgos", "Otro"];
 
 export function renderApp() {
   if (typeof document === "undefined") return;
@@ -219,14 +229,13 @@ function shell() {
           <span class="demo-tag">Modo demostracion</span>
         </div>
         <div class="demo-controls">
-          ${isAdmin ? `<label class="admin-search"><span class="sr-only">Buscar participantes</span>
-            <input data-action="admin-search" value="${adminParticipantQuery}" placeholder="Buscar estudios, participante">
-          </label>` : `<button class="topbar-catalog-link" data-view="redimir">Catalogo Luegopago</button>`}
-          <button class="utility-action" data-action="notifications" aria-label="Ver notificaciones">
+          ${isAdmin ? "" : `<button class="topbar-catalog-link" data-view="redimir">Redimir puntos</button>`}
+          <button class="utility-action" data-action="notifications" aria-label="Ver notificaciones" aria-expanded="${utilityPanel === "notifications"}">
             <span aria-hidden="true"></span>
             <small>Notificaciones</small>
+            ${unreadNotifications().length ? `<i class="notification-dot">${unreadNotifications().length}</i>` : ""}
           </button>
-          <button class="utility-action" data-action="help" aria-label="Abrir ayuda">
+          <button class="utility-action" data-action="help" aria-label="Abrir ayuda" aria-expanded="${utilityPanel === "help"}">
             <strong aria-hidden="true">?</strong>
             <small>Ayuda</small>
           </button>
@@ -241,6 +250,7 @@ function shell() {
               <button data-action="logout">Cerrar sesion</button>
             </div>` : ""}
           </div>
+          ${utilityPanel === "notifications" ? renderNotificationsPanel() : utilityPanel === "help" ? renderHelpPanel() : ""}
         </div>
       </header>
       <p class="privacy-note">Tu participacion es voluntaria y no afecta tus productos, cupos ni condiciones con Sistecredito. Todos los datos de este prototipo son simulados.</p>
@@ -267,6 +277,37 @@ function sessionProfile(isAdmin) {
   };
 }
 
+function sessionNotifications() {
+  if (state.notifications?.length) return state.notifications;
+  return [
+    { id: "not_1", type: "invitacion", title: "Nueva invitacion", detail: "Tienes una mision disponible para revisar.", read: false },
+    { id: "not_2", type: "recordatorio", title: "Recordatorio de mision", detail: "Revisa tus misiones antes de la fecha limite.", read: false },
+    { id: "not_3", type: "puntos", title: "Puntos entregados", detail: "Consulta el saldo actualizado en Redimir puntos.", read: true },
+  ];
+}
+
+function unreadNotifications() { return sessionNotifications().filter((item) => !item.read); }
+
+function renderNotificationsPanel() {
+  return `<aside class="utility-panel" aria-label="Notificaciones">
+    <div class="utility-panel-head"><h2>Notificaciones</h2><button class="ghost" data-action="mark-notifications-read">Marcar leidas</button></div>
+    ${sessionNotifications().map((item) => `<article class="notification-item ${item.read ? "" : "unread"}"><strong>${item.title}</strong><p>${item.detail}</p></article>`).join("")}
+  </aside>`;
+}
+
+function renderHelpPanel() {
+  const help = [
+    ["Que es Co-crea?", "Una comunidad voluntaria para probar experiencias antes de lanzarlas."],
+    ["Como funcionan las misiones?", "Recibes una invitacion, aceptas participar, completas la tarea y envias feedback."],
+    ["Como gano puntos?", "Los puntos se entregan cuando el equipo aprueba una participacion que cumple los criterios."],
+    ["Como redimo puntos?", "Entra a Redimir puntos, revisa tu saldo y elige una opcion disponible."],
+    ["Que significa mi nivel?", "Refleja tu trayectoria en la comunidad segun la XP acumulada."],
+    ["Como funcionan las invitaciones?", "Se envian segun el perfil y los criterios definidos para cada mision."],
+    ["Como contactar soporte?", "Usa el canal corporativo de soporte definido para Co-crea."],
+  ];
+  return `<aside class="utility-panel help-panel" aria-label="Ayuda"><h2>Ayuda Co-crea</h2>${help.map(([title, detail]) => `<details><summary>${title}</summary><p>${detail}</p></details>`).join("")}</aside>`;
+}
+
 function renderParticipant() {
   const participant = currentParticipant();
   if (view === "complete-profile") return renderCompleteProfile();
@@ -281,6 +322,8 @@ function renderParticipant() {
 function renderParticipantHome(participant) {
   const recommended = availableMissions(participant).filter((mission) => matchParticipant(participant, mission).eligible).slice(0, 3);
   const pending = state.participations.filter((item) => item.participantId === participant.id && item.status === "pendiente_revision");
+  const level = LEVELS.find((item) => item.name === participant.level) || LEVELS[0];
+  const nextProgress = level.nextXp ? `${Math.max(0, participant.xp - level.minXp)} / ${level.nextXp - level.minXp} XP` : "Nivel maximo alcanzado";
   return `
     <section class="hero">
       <div class="hero-panel">
@@ -295,8 +338,9 @@ function renderParticipantHome(participant) {
         </figure>
       </div>
       <div class="quick-card">
+        <p class="muted">Nivel actual</p>
         <h2>${participant.level}</h2>
-        <p class="muted">${participant.xp} XP acumulada</p>
+        <p><strong>Progreso al siguiente nivel</strong><br><span class="muted">${nextProgress}</span></p>
         <div class="progress" aria-label="Progreso de nivel"><span style="width:${levelProgress(participant.xp)}%"></span></div>
         <div class="grid two" style="margin-top:1rem">
           ${metric("Puntos", participant.points)}
@@ -305,22 +349,22 @@ function renderParticipantHome(participant) {
       </div>
     </section>
     <section class="grid three">
-      ${metricCard("Nivel actual", participant.level, "Sigue participando para desbloquear insignias.")}
-      ${metricCard("Confiabilidad", `${participant.reliability}/100`, "Independiente de si tu opinion es positiva o critica.")}
-      ${metricCard("Proxima actividad", pending[0] ? "Revision pendiente" : "Sin agenda", pending[0] ? "El equipo validara tu aporte." : "Explora misiones recomendadas.")}
+      ${metricCard("XP acumulada", participant.xp, "Experiencia obtenida en participaciones aprobadas.")}
+      ${metricCard("Confiabilidad", `${participant.reliability}/100`, "Indicador de consistencia y calidad historica. La formula actual promedia cumplimiento, asistencia, evidencia, claridad, instrucciones y confidencialidad.")}
+      ${metricCard("Proxima actividad", pending[0] ? "Resultado pendiente" : "Sin agenda", pending[0] ? "El equipo validara tu aporte." : "Explora misiones recomendadas.")}
     </section>
     <div class="section-title"><h2>Misiones recomendadas</h2><button class="secondary" data-view="catalogo">Abrir catalogo</button></div>
     <section class="grid three">${recommended.map((mission) => missionCard(mission, participant)).join("")}</section>
     <div class="section-title"><h2>Beneficios disponibles</h2><button class="secondary" data-view="redimir">Ir a redimir</button></div>
     <section class="grid two">
       <article class="card reward-callout">
-        <p class="demo-tag">Catalogo Luegopago</p>
+        <p class="demo-tag">Redimir puntos</p>
         <h3>Usa tus puntos cuando termines misiones aprobadas</h3>
         <p class="muted">Este catalogo es provisional y simulado. Cuando compartas el catalogo real de Luegopago lo conecto con sus categorias y valores.</p>
       </article>
       ${metricCard("Puntos para redimir", participant.points, participant.type === "aliado" ? "Puntos Sonadores simulados" : "Puntos Co-crea")}
     </section>
-    <div class="section-title"><h2>Resumen de impacto</h2></div>
+    <div class="section-title"><h2>Tu voz genera cambios</h2></div>
     <section class="grid three">${state.impactStories.slice(0, 3).map(impactCard).join("")}</section>
   `;
 }
@@ -477,14 +521,8 @@ function renderProfile(participant) {
       </div>
     </section>
     <section class="card" style="margin-top:1rem">
-      <p class="demo-tag">Portabilidad de la demo</p>
-      <h2>Exportar mis respuestas</h2>
-      <p class="muted">Descarga tus participaciones para compartirlas por un canal corporativo autorizado. El archivo no incluye contrasenas ni informacion financiera.</p>
-      <div class="pill-row">
-        <button data-action="export-responses-json" ${history.length ? "" : "disabled"}>Descargar JSON</button>
-        <button class="secondary" data-action="export-responses-csv" ${history.length ? "" : "disabled"}>Descargar CSV</button>
-      </div>
-      ${history.length ? `<p class="muted">Se exportaran ${history.length} participacion(es) del usuario actual.</p>` : `<p class="empty">Completa una mision para habilitar la exportacion.</p>`}
+      <h2>Exportar mis respuestas</h2><p class="muted">Descarga solo tus participaciones en JSON o CSV. No incluye contrasenas ni informacion financiera.</p>
+      <div class="pill-row"><button data-action="export-responses-json" ${history.length ? "" : "disabled"}>Descargar JSON</button><button class="secondary" data-action="export-responses-csv" ${history.length ? "" : "disabled"}>Descargar CSV</button></div>
     </section>
     <section class="card reward-strip" style="margin-top:1rem">
       <div>
@@ -526,10 +564,11 @@ function renderCompleteProfile() {
 }
 
 function renderClientProfileFields() {
+  const municipalities = COLOMBIA_LOCATIONS[communityProfileDraft.department] || COLOMBIA_LOCATIONS.Otro;
   return `
     <div class="form-grid">
-      <label>Departamento<input data-profile-field="department" value="${communityProfileDraft.department}"></label>
-      <label>Municipio de residencia<input data-profile-field="municipality" value="${communityProfileDraft.municipality}"></label>
+      <label>Departamento<select data-profile-field="department">${Object.keys(COLOMBIA_LOCATIONS).map((item) => option(item, item, communityProfileDraft.department)).join("")}</select></label>
+      <label>Municipio de residencia<select data-profile-field="municipality">${municipalities.map((item) => option(item, item, communityProfileDraft.municipality)).join("")}</select></label>
       <label>Edad<input data-profile-field="age" value="${communityProfileDraft.age}"></label>
       <label>Genero<select data-profile-field="gender">${option("M", "M", communityProfileDraft.gender)}${option("F", "F", communityProfileDraft.gender)}</select></label>
       <label>Experiencia digital<select data-profile-field="digitalExperience">${option("Basica", "Basica", communityProfileDraft.digitalExperience)}${option("Media", "Media", communityProfileDraft.digitalExperience)}${option("Alta", "Alta", communityProfileDraft.digitalExperience)}</select></label>
@@ -553,25 +592,31 @@ function renderEmployeeProfileFields() {
   return `
     ${renderClientProfileFields()}
     <div class="form-grid" style="margin-top:0.8rem">
-      <label>Area a la que perteneces<input data-profile-field="area" value="${communityProfileDraft.area}"></label>
+      <label>Area a la que perteneces<select data-profile-field="area">${INTERNAL_AREAS.map((item) => option(item, item, communityProfileDraft.area)).join("")}</select></label>
       <label>Cargo<input data-profile-field="position" value="${communityProfileDraft.position}"></label>
     </div>
   `;
 }
 
 function renderRewardsCatalog(participant) {
+  const products = [
+    { name: "Audifonos inalambricos", category: "Tecnologia", points: 1500, available: true, image: "./assets/brand-extracted/image1.png" },
+    { name: "Bono digital", category: "Bonos", points: 1000, available: true, image: "./assets/brand-extracted/image2.png" },
+    { name: "Experiencia de entretenimiento", category: "Experiencias", points: 2200, available: false, image: "./assets/brand-extracted/image0.png" },
+  ];
   return `
     <div class="section-title">
       <div>
-        <h1>Catalogo Luegopago</h1>
-        <p class="muted">Referencia visual del catalogo de redencion para la demo.</p>
+        <h1>Redimir puntos</h1>
+        <p class="muted">Catalogo de referencia mientras se conecta la integracion real con LuegoPago.</p>
       </div>
-      <span class="session-pill">${participant.points} puntos disponibles</span>
+      <span class="session-pill">Tus puntos disponibles: ${participant.points.toLocaleString("es-CO")} puntos</span>
     </div>
-    <section class="catalog-reference">
-      <img src="./assets/luegopago-catalog.svg" alt="Catalogo Luegopago de beneficios para redimir puntos" />
-    </section>
-    <p class="empty" style="margin-top:1rem">Esta vista es demostrativa. No descuenta puntos reales ni genera transacciones reales.</p>
+    <section class="reward-products">${products.map((product) => {
+      const missing = Math.max(0, product.points - participant.points);
+      return `<article class="card reward-product"><img src="${product.image}" alt="${product.name}"><p class="pill">${product.category}</p><h2>${product.name}</h2><p><strong>${product.points.toLocaleString("es-CO")} puntos</strong></p><p class="muted">${product.available ? "Disponible" : "Temporalmente agotado"}</p>${missing ? `<p class="pill warn">Te faltan ${missing.toLocaleString("es-CO")} puntos</p>` : `<button data-action="redeem-reference" ${product.available ? "" : "disabled"}>Redimir</button>`}</article>`;
+    }).join("")}</section>
+    <p class="empty" style="margin-top:1rem">Vista de referencia: no descuenta puntos ni genera transacciones reales.</p>
   `;
 }
 
@@ -591,59 +636,35 @@ function renderImpact() {
 
 function renderAdmin() {
   if (view === "complete-profile") return renderCompleteProfile();
-  if (view === "admin-participantes") return renderAdminParticipants();
+  if (selectedAdminMissionId) return renderMissionResults(selectedAdminMissionId);
   if (view === "admin-misiones") return renderAdminMissions();
   if (view === "admin-crear") return renderWizard();
-  if (view === "admin-invitaciones") return renderInvitations();
   if (view === "admin-comunidad") return renderCommunity();
-  if (view === "admin-revision") return renderReview();
   if (view === "admin-comportamiento") return renderBehaviorAnalytics();
-  if (view === "admin-laboratorio") return renderSyntheticLab();
+  if (view === "admin-configuracion") return renderAdminSettings();
   return renderAdminDashboard();
 }
 
 function renderAdminDashboard() {
-  const activeParticipants = state.participants.filter((p) => p.status === "activo").length;
-  const pending = state.participations.filter((p) => p.status === "pendiente_revision").length;
-  const points = state.rewardTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-  const evidence = separateEvidenceMetrics(state);
+  const activeMissions = state.missions.filter((mission) => mission.status === "activo").length;
+  const execution = missionExecutionAverage(state.missions);
+  const quality = analyzeFeedbackQuality(state.participations, state.submissions);
   return `
     <div class="section-title"><h1>Dashboard administrativo</h1></div>
-    <section class="card synthetic-entry-card">
-      <div>
-        <p class="demo-tag">Nuevo modulo</p>
-        <h2>Laboratorio sintetico</h2>
-        <p>Simula entrevistas con arquetipos de clientes y aliados para preparar mejor una prueba real.</p>
-      </div>
-      <button data-view="admin-laboratorio">Abrir laboratorio</button>
-    </section>
     <section class="grid four">
-      ${metricCard("Testers registrados", state.participants.length, "Clientes y aliados ficticios")}
-      ${metricCard("Activos ultimos 90 dias", activeParticipants, "Disponibles para invitar")}
-      ${metricCard("Misiones activas", state.missions.filter((m) => m.status === "activa").length, "En ejecucion")}
-      ${metricCard("Pendientes de revision", pending, "Requieren decision")}
-      ${metricCard("Tasa de aceptacion", "48%", "Dato simulado")}
-      ${metricCard("Finalizacion", "67%", "Dato simulado")}
-      ${metricCard("Tiempo de muestra", "3,2 dias", "Promedio simulado")}
-      ${metricCard("Puntos entregados", points, "Beneficios simulados")}
+      ${metricCard("Participantes registrados", state.participants.length, "Personas registradas en la comunidad Co-crea.")}
+      ${metricCard("Misiones activas", `${activeMissions} de ${state.missions.length}`, "Misiones en ejecucion sobre el total creado.")}
+      ${metricCard("Tiempo promedio de ejecucion", execution.days == null ? "Sin datos" : `${execution.days} dias`, execution.count ? `Promedio de las ultimas ${execution.count} misiones cerradas.` : "Se calcula entre inicio y cierre.")}
+      ${metricCard("Calidad promedio del feedback", quality.count ? `${quality.score} / 100` : "Sin evaluar", "Evaluacion promedio de utilidad y calidad. Regla local provisional preparada para feedbackQualityAnalyzer.")}
     </section>
-    <div class="section-title"><h2>Separacion de evidencia</h2><span class="demo-tag">No mezclar metricas</span></div>
-    <section class="grid three">
-      <article class="card"><h3>Evidencia real</h3><p><strong>${evidence.realEvidence.participants}</strong> participantes reales de demo</p><p><strong>${evidence.realEvidence.completed}</strong> participaciones aprobadas</p><p><strong>${evidence.realEvidence.pointsDelivered.toLocaleString("es-CO")}</strong> puntos entregados</p></article>
-      <article class="card"><h3>Exploracion sintetica</h3><p><strong>${evidence.syntheticExploration.simulations}</strong> simulaciones</p><p><strong>${evidence.syntheticExploration.scenarios}</strong> escenarios generados</p><p><strong>${evidence.syntheticExploration.pendingContrast}</strong> pendientes de contraste real</p></article>
-      <article class="card"><h3>Datos de demostracion</h3><p><strong>${evidence.demoData.seedMissions}</strong> misiones seed</p><p><strong>${evidence.demoData.localBehaviorEvents}</strong> eventos locales</p><p class="muted">Datos ficticios para probar el prototipo.</p></article>
-    </section>
-    <section class="grid two" style="margin-top:1rem">
-      ${chart("Participaciones por semana", [["Sem 1", 18], ["Sem 2", 26], ["Sem 3", 34], ["Sem 4", 29]])}
-      ${chart("Participantes por nivel", [["Explorador", 9], ["Cocreador", 12], ["Especialista", 7], ["Embajador", 2]])}
-      ${chart("Misiones por estado", [["Activa", 3], ["Reclutando", 1], ["Cerrada", 1], ["Borrador", state.missions.filter((m) => m.status === "borrador").length]])}
-      ${chart("Calidad promedio del feedback", [["Util", 82], ["Claro", 76], ["Completo", 69], ["Con evidencia", 58]])}
-    </section>
-    <div class="section-title"><h2>Comportamiento en prototipos</h2><button class="secondary" data-view="admin-comportamiento">Ver mapa de calor</button></div>
+    <div class="section-title"><h2>Comportamiento en prototipos</h2><button class="secondary" data-view="admin-comportamiento">Ver analitica</button></div>
     ${behaviorSummaryCard()}
-    <div class="section-title"><h2>Busqueda rapida</h2><button class="secondary" data-view="admin-participantes">Buscar participantes</button></div>
-    ${participantSearchSummary()}
+    <p class="empty">Pendiente de homologacion con metricas de prototipos definidas en la linea de Discovery.</p>
   `;
+}
+
+function renderAdminSettings() {
+  return `<div class="section-title"><h1>Configuracion</h1></div><section class="card"><h2>Catalogos de producto</h2><p>Los tipos de mision actuales permanecen centralizados y editables.</p><p class="empty"><strong>TODO Producto:</strong> Validar catalogo definitivo de tipos de mision con Caro Angel.</p></section>`;
 }
 
 function renderSyntheticLab() {
@@ -850,26 +871,51 @@ function renderAdminParticipants() {
 }
 
 function renderAdminMissions() {
+  const query = missionQuery.trim().toLowerCase();
+  const missions = state.missions.filter((mission) => {
+    const matchesStatus = missionStatusFilter === "todos" || mission.status === missionStatusFilter;
+    const text = [mission.name, mission.owner, mission.type, mission.startDate, mission.deadline, mission.audience].join(" ").toLowerCase();
+    return matchesStatus && (!query || text.includes(query));
+  });
   return `
-    <div class="section-title"><h1>Gestion de misiones</h1><button data-view="admin-crear">Crear nueva mision</button></div>
+    <div class="section-title"><div><h1>Misiones</h1><p class="muted">Crea, recluta, monitorea y consulta resultados desde un solo lugar.</p></div><button data-view="admin-crear">Crear mision</button></div>
+    <section class="card mission-controls">
+      <label>Buscar mision<input data-action="mission-search" value="${missionQuery}" placeholder="Nombre, responsable, fecha, audiencia o tipo"></label>
+      <div class="tabs" role="tablist">${[["todos","Todos"],["creado","Creados"],["reclutando","Reclutando"],["activo","Activos"],["cerrado","Cerrados"],["cancelado","Cancelados"]].map(([id,label]) => `<button class="${missionStatusFilter === id ? "active" : ""}" data-mission-filter="${id}">${label}</button>`).join("")}</div>
+    </section>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Nombre</th><th>Tipo</th><th>Audiencia</th><th>Estado</th><th>Responsable</th><th>Requeridos</th><th>Invitados</th><th>Aceptados</th><th>Completados</th><th>Presupuesto</th><th>Limite</th><th>Acciones</th></tr></thead>
-        <tbody>${state.missions.map((m) => `<tr><td>${m.name}</td><td>${m.type}</td><td>${m.audience}</td><td><span class="pill info">${m.status}</span></td><td>${m.owner}</td><td>${m.requiredParticipants}</td><td>${m.invited}</td><td>${m.accepted}</td><td>${m.completed}</td><td>$${m.budget.toLocaleString("es-CO")}</td><td>${m.deadline}</td><td><button class="secondary" data-duplicate="${m.id}">Duplicar</button></td></tr>`).join("")}</tbody>
+        <thead><tr><th>Nombre</th><th>Responsable</th><th>Tipo</th><th>Fecha inicio</th><th>Fecha fin</th><th>Participantes</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody>${missions.map((m) => `<tr><td><strong>${m.name}</strong></td><td>${m.owner}</td><td>${m.type}</td><td>${m.startDate}</td><td>${m.deadline}</td><td>${m.completed} / ${m.requiredParticipants}</td><td><span class="pill ${missionStatusClass(m.status)}">${missionStatusLabel(m.status)}</span></td><td><div class="mission-actions">${missionActionButtons(m)}</div></td></tr>`).join("") || `<tr><td colspan="8"><p class="empty">No hay misiones que coincidan con la busqueda.</p></td></tr>`}</tbody>
       </table>
     </div>
   `;
 }
 
+function missionActionButtons(mission) {
+  return missionStateActions(mission.status).map((action) => {
+    if (action === "duplicar") return `<button class="secondary" data-duplicate="${mission.id}">Duplicar</button>`;
+    if (action === "editar") return `<button class="secondary" data-edit-mission="${mission.id}">Editar</button>`;
+    if (action === "cancelar") return `<button class="ghost" data-mission-action="cancelar" data-mission-id="${mission.id}">Cancelar</button>`;
+    if (action === "seleccionar") return `<button data-mission-action="seleccionar" data-mission-id="${mission.id}">Seleccionar participantes</button>`;
+    if (action === "enviar") return `<button data-mission-action="enviar" data-mission-id="${mission.id}">Enviar invitaciones</button>`;
+    if (action === "activar") return `<button data-mission-action="activar" data-mission-id="${mission.id}">Iniciar mision</button>`;
+    if (action === "cerrar") return `<button data-mission-action="cerrar" data-mission-id="${mission.id}">Cerrar mision</button>`;
+    if (action === "resultados") return `<button data-mission-results="${mission.id}">Ver resultados</button>`;
+    if (action === "avance") return `<button class="secondary" data-mission-results="${mission.id}">Ver avance</button>`;
+    return `<button class="secondary" data-mission-results="${mission.id}">Ver detalle</button>`;
+  }).join("");
+}
+
+function missionStatusLabel(status) { return ({ creado: "Creado", reclutando: "Reclutando", activo: "Activo", cerrado: "Cerrado", cancelado: "Cancelado" })[status] || status; }
+function missionStatusClass(status) { return status === "activo" ? "ok" : status === "cancelado" ? "bad" : status === "reclutando" ? "warn" : "info"; }
+
 function renderWizard() {
-  const compatible = estimateCompatible(draftMission);
-  const recommended = recommendInvitations(Number(draftMission.requiredParticipants || 10), 0.4);
-  const risk = compatible < recommended ? "Riesgo medio de no completar la muestra" : "Muestra saludable";
   return `
     <div class="section-title"><h1>Asistente para crear una mision</h1></div>
     <section class="card wizard">
       <div class="stepper">${[0,1,2,3,4].map((i) => `<span class="step ${i <= wizardStep ? "active" : ""}"></span>`).join("")}</div>
-      ${wizardContent(compatible, recommended, risk)}
+      ${wizardContent()}
       <div class="pill-row">
         <button class="secondary" data-action="prev-wizard" ${wizardStep === 0 ? "disabled" : ""}>Anterior</button>
         ${wizardStep < 4 ? `<button data-action="next-wizard">Siguiente</button>` : `<button data-action="save-mission">Publicar mision</button>`}
@@ -878,12 +924,11 @@ function renderWizard() {
   `;
 }
 
-function wizardContent(compatible, recommended, risk) {
+function wizardContent() {
   if (wizardStep === 0) return `
     <div class="form-grid">
       ${input("name", "Nombre", draftMission.name)}
       ${selectField("type", "Tipo de mision", draftMission.type, ["Pulso rapido","Encuesta","Prueba de prototipo","Entrevista","Prueba de aplicacion beta","Prueba de Credinet","Piloto de varios dias","Verificacion de una correccion"])}
-      ${selectField("audience", "Audiencia", draftMission.audience, ["clientes","aliados","ambos"])}
       ${input("owner", "Responsable interno", draftMission.owner)}
       ${input("startDate", "Fecha de inicio", draftMission.startDate, "date")}
       ${input("deadline", "Fecha limite", draftMission.deadline, "date")}
@@ -891,21 +936,10 @@ function wizardContent(compatible, recommended, risk) {
     <label>Descripcion<textarea data-draft="description">${draftMission.description}</textarea></label>
     <label>Objetivo interno<textarea data-draft="internalObjective">${draftMission.internalObjective}</textarea></label>`;
   if (wizardStep === 1) return `
-    <div class="empty"><strong>Confiabilidad minima:</strong> puntaje interno de 0 a 100 que resume cumplimiento, asistencia, claridad del feedback y calidad de evidencia. No mide si la opinion fue positiva para Sistecredito.</div>
-    <div class="grid three">
-      ${metricCard("Compatibles", compatible, "Segun filtros actuales")}
-      ${metricCard("Invitaciones sugeridas", recommended, "Requeridos / 40% finalizacion")}
-      ${metricCard("Riesgo", risk, "Formula documentada en codigo")}
-    </div>
-    <div class="form-grid">
-      ${selectField("audience", "Audiencia de la mision", draftMission.audience, ["clientes","aliados","ambos"])}
-      ${selectField("city", "Ciudad", draftMission.city, ["Todas","Medellin","Bogota","Cali","Barranquilla","Bucaramanga"])}
-      ${selectField("os", "Sistema operativo", draftMission.os, ["Todos","Android","iOS","Windows"])}
-      ${participantProfileFilter()}
-      ${selectField("minLevel", "Nivel minimo", draftMission.minLevel, ["Explorador","Cocreador","Especialista","Embajador"])}
-      ${input("requiredParticipants", "Participantes requeridos", draftMission.requiredParticipants, "number")}
-      ${inputWithHelp("reliability", "Confiabilidad minima", draftMission.reliability, "number", "Ejemplo: 70 muestra personas con buen historial. 40 abre mas la convocatoria para una prueba exploratoria.")}
-    </div>`;
+    <h2>Niveles habilitados</h2>
+    <p class="muted">Puedes seleccionar uno, varios o todos. La audiencia se construira despues al seleccionar participantes desde Comunidad.</p>
+    <div class="level-options">${LEVELS.map((level) => `<label class="level-option"><input type="checkbox" data-mission-level="${level.name}" ${draftMission.levels.includes(level.name) ? "checked" : ""}><span><strong>${level.name}</strong><small>${levelDescription(level.name)}</small></span></label>`).join("")}</div>
+    <div class="form-grid">${input("requiredParticipants", "Participantes requeridos", draftMission.requiredParticipants, "number")}</div>`;
   if (wizardStep === 2) return `
     <label>Instrucciones<textarea data-draft="instructions">${draftMission.instructions}</textarea></label>
     <div class="form-grid">
@@ -922,14 +956,13 @@ function wizardContent(compatible, recommended, risk) {
       ${input("durationMinutes", "Duracion estimada", draftMission.durationMinutes, "number")}
       ${selectField("channel", "Canal de ejecucion", draftMission.channel, ["remota","videollamada","presencial","beta"])}
     </div>
-    <label class="check"><input type="checkbox" data-draft-check="confidentiality" ${draftMission.confidentiality ? "checked" : ""}> Requiere confidencialidad</label>
     <label class="check"><input type="checkbox" data-draft-check="recording" ${draftMission.recording ? "checked" : ""}> Requiere grabacion</label>`;
   return `
     <div class="grid two">
-      ${metricCard("Mision", draftMission.name || "Sin nombre", `${draftMission.type} para ${draftMission.audience}`)}
-      ${metricCard("Muestra", `${draftMission.requiredParticipants} requeridos`, `${recommended} invitaciones sugeridas`)}
+      ${metricCard("Mision", draftMission.name || "Sin nombre", draftMission.type)}
+      ${metricCard("Niveles", draftMission.levels.join(", ") || "Todos", `${draftMission.requiredParticipants} participantes requeridos`)}
       ${metricCard("Beneficio", draftMission.benefit, `${draftMission.points} puntos y ${draftMission.xp} XP`)}
-      ${metricCard("Estado inicial", "Reclutando", "Lista para seleccionar cohorte")}
+      ${metricCard("Estado inicial", "Creado", "Luego podras seleccionar participantes y enviar invitaciones")}
     </div>`;
 }
 
@@ -953,13 +986,46 @@ function renderInvitations() {
   `;
 }
 
+function renderMissionResults(missionId) {
+  const mission = missionById(missionId);
+  if (!mission) return `<p class="empty">La mision no existe.</p>`;
+  const summary = missionSummary(state, missionId);
+  const participations = state.participations.filter((item) => item.missionId === missionId);
+  const quality = analyzeFeedbackQuality(participations, state.submissions);
+  return `
+    <button class="ghost" data-action="back-missions">Volver a Misiones</button>
+    <div class="section-title"><div><h1>${mission.status === "cerrado" ? "Resultados" : "Avance"}: ${mission.name}</h1><p class="muted">Seguimiento de convocatoria, respuestas y recompensas.</p></div><span class="pill ${missionStatusClass(mission.status)}">${missionStatusLabel(mission.status)}</span></div>
+    <section class="grid four">
+      ${metricCard("Invitados", summary.invited, "Personas convocadas a esta mision.")}
+      ${metricCard("Aceptaron", summary.accepted, `Tasa de aceptacion: ${summary.acceptanceRate}%`)}
+      ${metricCard("Iniciaron", summary.started, "Participantes que comenzaron la ejecucion.")}
+      ${metricCard("Completaron", summary.completed, `Tasa de finalizacion: ${summary.completionRate}%`)}
+      ${metricCard("No completaron", summary.notCompleted, "Aceptaron o iniciaron, pero no finalizaron.")}
+      ${metricCard("Calidad del feedback", quality.count ? `${quality.score} / 100` : "Sin evaluar", "Regla local provisional; no corresponde a un analisis de IA.")}
+    </section>
+    <div class="section-title"><h2>Resultados por participante</h2></div>
+    <div class="table-wrap"><table><thead><tr><th>Participante</th><th>Estado</th><th>Fecha</th><th>Calidad del feedback</th><th>Puntos propuestos</th><th>Puntos entregados</th><th>Recompensa</th></tr></thead><tbody>
+      ${participations.map((item) => {
+        const participant = state.participants.find((person) => person.id === item.participantId);
+        const delivered = state.rewardTransactions.some((tx) => tx.missionId === missionId && tx.participantId === item.participantId);
+        return `<tr><td>${participant?.name || "Participante"}</td><td>${item.status.replaceAll("_", " ")}</td><td>${item.updatedAt?.slice(0,10) || "Sin fecha"}</td><td>${item.quality ? `${item.quality * 20} / 100` : "Pendiente"}</td><td>${mission.points}</td><td>${delivered ? mission.points : 0}</td><td>${item.status === "pendiente_revision" ? `<button data-approve="${item.id}">Aprobar recompensa</button><button class="ghost" data-reject="${item.id}">No aprobar</button>` : `<span class="pill ${item.status === "aprobada" ? "ok" : "bad"}">${item.status === "aprobada" ? "Aprobada" : "No aprobada"}</span>`}</td></tr>`;
+      }).join("") || `<tr><td colspan="7"><p class="empty">Aun no hay participaciones para esta mision.</p></td></tr>`}
+    </tbody></table></div>
+    <div class="section-title"><h2>Analisis de respuestas</h2></div>
+    <section class="grid two">
+      <article class="card"><h3>Preparado para analisis</h3><p>Este espacio recibira temas recurrentes, problemas, comentarios positivos, fricciones, sugerencias, insights y respuestas destacadas.</p><p class="empty">No hay un agente de IA conectado. La interfaz <code>feedbackQualityAnalyzer</code> queda desacoplada para una integracion futura.</p></article>
+      <article class="card"><h3>Criterios de recompensa</h3><p>Mision completada, evidencia registrada, feedback entregado y calidad revisada por una persona administradora.</p><p>La aprobacion registra responsable, fecha, cantidad y motivo en la auditoria existente.</p></article>
+    </section>
+  `;
+}
+
 function renderCommunity() {
   const clients = state.participants.filter((p) => p.type === "cliente");
   const allies = state.participants.filter((p) => p.type === "aliado");
   const active = state.participants.filter((p) => p.status === "activo");
   const paused = state.participants.filter((p) => p.status === "pausado");
   return `
-    <div class="section-title"><h1>Comunidad</h1><span class="demo-tag">Datos simulados</span></div>
+    <div class="section-title"><h1>Comunidad</h1><span class="session-pill">${state.participants.length} participantes registrados</span></div>
     <section class="community-hero">
       <div>
         <p class="demo-tag">Modelo de captacion</p>
@@ -994,34 +1060,13 @@ function renderCommunity() {
       ${processStep("3", "Consentimiento", "Acepta tratamiento de informacion de investigacion, confidencialidad o grabacion cuando aplique.")}
       ${processStep("4", "Activacion", "La persona queda disponible para invitaciones segun preferencias, fatiga y confiabilidad.")}
     </section>
-    <section class="grid two" style="margin-top:1rem">
-      <article class="card">
-        <h2>Formulario de ingreso simulado</h2>
-        <div class="form-grid">
-          <label>Tipo de comunidad<select><option>Cliente</option><option>Aliado</option></select></label>
-          <label>Ciudad<input value="Medellin" readonly></label>
-          <label>Dispositivo principal<select><option>Android</option><option>iOS</option><option>Computador</option></select></label>
-          <label>Disponibilidad<select><option>Tarde</option><option>Noche</option><option>Fin de semana</option></select></label>
-        </div>
-        <div class="checks" style="margin-top:1rem">
-          <label class="check"><input type="checkbox" checked disabled> Acepta participar de forma voluntaria</label>
-          <label class="check"><input type="checkbox" checked disabled> Acepta recibir invitaciones de prueba</label>
-        </div>
-        <p class="muted">Este formulario es demostrativo. No solicita documentos, creditos, ingresos ni datos financieros.</p>
-      </article>
-      <article class="card">
-        <h2>Datos que alimentan el matching</h2>
-        <div class="pill-row">
-          ${["Ciudad", "Departamento", "Dispositivo", "Sistema operativo", "Nivel digital", "Preferencias", "Disponibilidad", "Ultima participacion", "Confiabilidad", "Fatiga"].map((item) => `<span class="pill info">${item}</span>`).join("")}
-        </div>
-        <h3>Reglas de cuidado</h3>
-        <p>La plataforma evita sobreinvitar, respeta pausas temporales y muestra alertas cuando alguien tiene demasiadas invitaciones o participaciones recientes.</p>
-      </article>
-    </section>
+    <div class="section-title"><h2>Buscar y segmentar participantes</h2></div>
+    ${participantSearchSummary()}
+    <p class="muted">Busca por nombre, correo, ciudad, departamento, tipo, nivel o perfil. Estos datos estructurados alimentan el matching de Misiones.</p>
     <div class="section-title"><h2>Personas registradas</h2></div>
     <div class="table-wrap">
       <table><thead><tr><th>Nombre</th><th>Tipo</th><th>Ciudad</th><th>Perfil</th><th>Nivel</th><th>XP</th><th>Confiabilidad</th><th>Ultima actividad</th><th>Completadas</th><th>Asistencia</th><th>Estado</th><th>Disponibilidad</th></tr></thead>
-      <tbody>${state.participants.map((p) => `<tr><td>${p.name}</td><td>${p.type}</td><td>${p.city}</td><td>${p.type === "aliado" ? `${p.allyProfile.businessName}, ${p.allyProfile.role}` : `${p.device.os}, ${p.clientProfile.digitalExperience}`}</td><td>${p.level}</td><td>${p.xp}</td><td>${p.reliability}/100</td><td>${p.lastParticipationAt.slice(0,10)}</td><td>${p.completedMissions}</td><td>${p.attendanceRate}%</td><td><span class="pill ${p.status === "activo" ? "ok" : p.status === "pausado" ? "warn" : "bad"}">${p.status}</span></td><td>${p.availability}</td></tr>`).join("")}</tbody></table>
+      <tbody>${filteredParticipants().map((p) => `<tr><td>${p.name}</td><td>${p.type}</td><td>${p.city}</td><td>${p.type === "aliado" ? `${p.allyProfile.businessName}, ${p.allyProfile.role}` : `${p.device.os}, ${p.clientProfile.digitalExperience}`}</td><td>${p.level}</td><td>${p.xp}</td><td>${p.reliability}/100</td><td>${p.lastParticipationAt?.slice(0,10) || "Sin actividad"}</td><td>${p.completedMissions}</td><td>${p.attendanceRate}%</td><td><span class="pill ${p.status === "activo" ? "ok" : p.status === "pausado" ? "warn" : "bad"}">${p.status}</span></td><td>${p.availability}</td></tr>`).join("")}</tbody></table>
     </div>
   `;
 }
@@ -1041,6 +1086,7 @@ function renderBehaviorAnalytics() {
   const summary = summarizeBehaviorEvents(state.behaviorEvents || [], mission.id);
   return `
     <div class="section-title"><h1>Comportamiento en prototipos</h1></div>
+    <p class="empty">Pendiente de homologacion con metricas de prototipos definidas en la linea de Discovery. La vista esta preparada para clics, recorrido, abandono, errores, tiempo, tarea completada y puntos de friccion.</p>
     <section class="card">
       <div class="form-grid">
         <label>Mision analizada
@@ -1056,7 +1102,7 @@ function renderBehaviorAnalytics() {
     </section>
     <section class="grid four" style="margin-top:1rem">
       ${metricCard("Clics registrados", summary.totalClicks, "Eventos locales de la demo")}
-      ${metricCard("Co-creadores", summary.uniqueParticipants, "Participantes ficticios")}
+      ${metricCard("Participantes", summary.uniqueParticipants, "Participantes con interacciones registradas")}
       ${metricCard("Zona mas usada", summary.topZones[0]?.[0] || "Sin datos", `${summary.topZones[0]?.[1] || 0} clics`)}
       ${metricCard("Boton mas usado", summary.topButtons[0]?.[0] || "Sin datos", `${summary.topButtons[0]?.[1] || 0} clics`)}
     </section>
@@ -1179,7 +1225,13 @@ function bindEvents(app) {
     renderApp();
   });
   app.querySelectorAll("[data-profile-field]").forEach((input) => {
-    const update = () => { communityProfileDraft = { ...communityProfileDraft, [input.dataset.profileField]: input.value }; };
+    const update = () => {
+      communityProfileDraft = { ...communityProfileDraft, [input.dataset.profileField]: input.value };
+      if (input.dataset.profileField === "department") {
+        communityProfileDraft.municipality = COLOMBIA_LOCATIONS[input.value]?.[0] || "Otro";
+        renderApp();
+      }
+    };
     input.addEventListener("input", update);
     input.addEventListener("change", update);
   });
@@ -1214,15 +1266,24 @@ function bindEvents(app) {
     renderApp();
   });
   app.querySelector("[data-action='notifications']")?.addEventListener("click", () => {
-    toast("Notificaciones de demostracion.");
+    utilityPanel = utilityPanel === "notifications" ? null : "notifications";
+    renderApp();
   });
   app.querySelector("[data-action='help']")?.addEventListener("click", () => {
-    toast("Centro de ayudas simulado para el prototipo.");
+    utilityPanel = utilityPanel === "help" ? null : "help";
+    renderApp();
+  });
+  app.querySelector("[data-action='mark-notifications-read']")?.addEventListener("click", () => {
+    state = { ...state, notifications: sessionNotifications().map((item) => ({ ...item, read: true })) };
+    localStorage.setItem("sistecredito-cocrea-state", JSON.stringify(state));
+    utilityPanel = null;
+    toast("Notificaciones marcadas como leidas.");
+    renderApp();
   });
   app.querySelectorAll("[data-action='admin-search'], [data-action='participant-search']").forEach((input) => {
     const runSearch = () => {
       adminParticipantQuery = input.value.trim();
-      view = "admin-participantes";
+      view = "admin-comunidad";
       selectedMissionId = null;
       renderApp();
     };
@@ -1238,7 +1299,7 @@ function bindEvents(app) {
     view = isCurrentAdmin() ? "admin-dashboard" : "inicio";
     renderApp();
   });
-  app.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { profileMenuOpen = false; view = button.dataset.view; selectedMissionId = null; renderApp(); }));
+  app.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { profileMenuOpen = false; view = button.dataset.view; selectedMissionId = null; selectedAdminMissionId = null; utilityPanel = null; renderApp(); }));
   app.querySelector("[data-action='reset']")?.addEventListener("click", () => { profileMenuOpen = false; state = resetState(); selectedMissionId = null; view = "inicio"; toast("Datos de demostracion restablecidos."); renderApp(); });
   app.querySelectorAll("[data-open-mission]").forEach((button) => button.addEventListener("click", () => { selectedMissionId = button.dataset.openMission; missionStep = "detail"; renderApp(); }));
   app.querySelector("[data-action='back-catalog']")?.addEventListener("click", () => { selectedMissionId = null; view = "catalogo"; renderApp(); });
@@ -1278,25 +1339,48 @@ function bindEvents(app) {
     renderApp();
   });
   app.querySelector("[data-action='go-home']")?.addEventListener("click", () => { selectedMissionId = null; view = "inicio"; renderApp(); });
-  app.querySelector("[data-action='export-responses-json']")?.addEventListener("click", () => {
-    const participant = currentParticipant();
-    const exportData = buildParticipantResponseExport(state, participant.id, new Date().toISOString());
-    downloadTextFile(`respuestas-cocrea-${participant.id}.json`, JSON.stringify(exportData, null, 2), "application/json;charset=utf-8");
-    toast("Respuestas exportadas en formato JSON.");
-  });
-  app.querySelector("[data-action='export-responses-csv']")?.addEventListener("click", () => {
-    const participant = currentParticipant();
-    const exportData = buildParticipantResponseExport(state, participant.id, new Date().toISOString());
-    downloadTextFile(`respuestas-cocrea-${participant.id}.csv`, participantResponseExportToCsv(exportData), "text/csv;charset=utf-8");
-    toast("Respuestas exportadas en formato CSV.");
-  });
+  app.querySelector("[data-action='export-responses-json']")?.addEventListener("click", () => exportParticipantResponses("json"));
+  app.querySelector("[data-action='export-responses-csv']")?.addEventListener("click", () => exportParticipantResponses("csv"));
   app.querySelectorAll("[data-filter]").forEach((input) => input.addEventListener("change", () => { filters[input.dataset.filter] = input.value; renderApp(); }));
   app.querySelector("[data-action='clear-filters']")?.addEventListener("click", () => { filters = { duration: "todas", type: "todas", benefit: "todos" }; renderApp(); });
   app.querySelectorAll("[data-approve]").forEach((button) => button.addEventListener("click", () => { state = approveFromStore(state, button.dataset.approve); toast("Participacion aprobada. Puntos y XP entregados."); renderApp(); }));
   app.querySelectorAll("[data-reject]").forEach((button) => button.addEventListener("click", () => { state = rejectParticipation(state, button.dataset.reject, "La evidencia simulada no coincide con la tarea."); toast("Participacion rechazada con razon registrada."); renderApp(); }));
   app.querySelectorAll("[data-clarify]").forEach((button) => button.addEventListener("click", () => { toast(`Aclaracion simulada enviada para ${button.dataset.clarify}.`); }));
   app.querySelectorAll("[data-redeem]").forEach((button) => button.addEventListener("click", () => { toast(`Redencion simulada solicitada: ${button.dataset.redeem}.`); }));
-  app.querySelectorAll("[data-duplicate]").forEach((button) => button.addEventListener("click", () => { state = duplicateMission(state, button.dataset.duplicate); toast("Mision duplicada como borrador."); renderApp(); }));
+  app.querySelector("[data-action='redeem-reference']")?.addEventListener("click", () => toast("Solicitud de redencion registrada solo como referencia."));
+  app.querySelector("[data-action='mission-search']")?.addEventListener("change", (event) => { missionQuery = event.target.value; renderApp(); });
+  app.querySelector("[data-action='mission-search']")?.addEventListener("keydown", (event) => { if (event.key === "Enter") { missionQuery = event.target.value; renderApp(); } });
+  app.querySelectorAll("[data-mission-filter]").forEach((button) => button.addEventListener("click", () => { missionStatusFilter = button.dataset.missionFilter; renderApp(); }));
+  app.querySelectorAll("[data-mission-results]").forEach((button) => button.addEventListener("click", () => { selectedAdminMissionId = button.dataset.missionResults; renderApp(); }));
+  app.querySelectorAll("[data-edit-mission]").forEach((button) => button.addEventListener("click", () => {
+    const mission = missionById(button.dataset.editMission);
+    editingMissionId = mission.id;
+    draftMission = { ...defaultMissionDraft(), ...mission, levels: mission.levels || [mission.minLevel], questions: mission.questions.map((question) => question.label) };
+    wizardStep = 0;
+    view = "admin-crear";
+    renderApp();
+  }));
+  app.querySelector("[data-action='back-missions']")?.addEventListener("click", () => { selectedAdminMissionId = null; view = "admin-misiones"; renderApp(); });
+  app.querySelectorAll("[data-mission-action]").forEach((button) => button.addEventListener("click", () => {
+    const missionId = button.dataset.missionId;
+    const action = button.dataset.missionAction;
+    const mission = missionById(missionId);
+    if (action === "seleccionar") {
+      const selected = filterEligibleParticipants(state.participants, mission).filter((participant) => participant.status !== "pausado").slice(0, mission.requiredParticipants).map((participant) => participant.id);
+      state = { ...state, missionSelections: { ...(state.missionSelections || {}), [missionId]: selected } };
+      toast(`${selected.length} participantes seleccionados desde Comunidad.`);
+    } else if (action === "enviar") {
+      const selected = state.missionSelections?.[missionId] || filterEligibleParticipants(state.participants, mission).slice(0, mission.requiredParticipants).map((participant) => participant.id);
+      state = sendInvitations(state, missionId, selected, "Correo");
+      toast(`${selected.length} invitaciones enviadas.`);
+    } else {
+      const next = action === "cancelar" ? "cancelado" : action === "activar" ? "activo" : "cerrado";
+      state = updateMissionStatus(state, missionId, next);
+      toast(`Mision actualizada a ${missionStatusLabel(next)}.`);
+    }
+    renderApp();
+  }));
+  app.querySelectorAll("[data-duplicate]").forEach((button) => button.addEventListener("click", () => { state = duplicateMission(state, button.dataset.duplicate); toast("Mision duplicada como creada."); renderApp(); }));
   app.querySelector("[data-action='auto-invite']")?.addEventListener("click", (event) => {
     const mission = missionById(event.target.dataset.mission);
     const selected = filterEligibleParticipants(state.participants, mission).filter((p) => p.status !== "pausado").slice(0, recommendInvitations(mission.requiredParticipants, 0.4)).map((p) => p.id);
@@ -1421,21 +1505,28 @@ function bindWizard(app) {
     if (["audience", "city", "os", "role", "digitalExperience", "minLevel"].includes(input.dataset.draft)) renderApp();
   }));
   app.querySelectorAll("[data-draft-check]").forEach((input) => input.addEventListener("change", () => { draftMission[input.dataset.draftCheck] = input.checked; }));
+  app.querySelectorAll("[data-mission-level]").forEach((input) => input.addEventListener("change", () => {
+    const levels = new Set(draftMission.levels);
+    if (input.checked) levels.add(input.dataset.missionLevel); else levels.delete(input.dataset.missionLevel);
+    draftMission.levels = [...levels];
+  }));
   app.querySelector("[data-action='next-wizard']")?.addEventListener("click", () => { wizardStep += 1; renderApp(); });
   app.querySelector("[data-action='prev-wizard']")?.addEventListener("click", () => { wizardStep = Math.max(0, wizardStep - 1); renderApp(); });
   app.querySelector("[data-action='save-mission']")?.addEventListener("click", () => {
-    draftMission.publish = true;
+    draftMission.publish = false;
     draftMission.requiredProfile = {
       cities: draftMission.city === "Todas" ? [] : [draftMission.city],
       os: draftMission.os === "Todos" ? [] : [draftMission.os],
       roles: draftMission.audience === "clientes" || draftMission.role === "Todos" ? [] : [draftMission.role],
       digitalExperience: draftMission.audience === "aliados" || draftMission.digitalExperience === "Todos" ? [] : [draftMission.digitalExperience],
     };
-    state = createMission(state, draftMission);
+    state = editingMissionId ? updateMissionDetails(state, editingMissionId, draftMission) : createMission(state, draftMission);
+    const message = editingMissionId ? "Mision actualizada." : "Mision creada. Ahora puedes seleccionar participantes.";
+    editingMissionId = null;
     draftMission = defaultMissionDraft();
     wizardStep = 0;
-    view = "admin-invitaciones";
-    toast("Mision creada y lista para invitar participantes.");
+    view = "admin-misiones";
+    toast(message);
     renderApp();
   });
 }
@@ -1469,20 +1560,19 @@ function currentParticipant() {
   return state.participants.find((p) => p.id === state.currentParticipantId) || state.participants[0];
 }
 
-function downloadTextFile(fileName, content, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 function isCurrentAdmin() {
   return currentAuthUser ? currentAuthUser.role === "admin" : state.currentRole === "admin";
+}
+
+function exportParticipantResponses(format) {
+  const participant = currentParticipant();
+  const exportData = buildParticipantResponseExport(state, participant.id, new Date().toISOString());
+  const content = format === "json" ? JSON.stringify(exportData, null, 2) : participantResponseExportToCsv(exportData);
+  const blob = new Blob([content], { type: format === "json" ? "application/json;charset=utf-8" : "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url; link.download = `respuestas-cocrea-${participant.id}.${format}`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  toast(`Respuestas exportadas en formato ${format.toUpperCase()}.`);
 }
 
 function startSession(user) {
@@ -1499,10 +1589,10 @@ function startSession(user) {
 
 function missionById(id) { return state.missions.find((mission) => mission.id === id); }
 function availableMissions(participant) {
-  return state.missions.filter((mission) => ["activa", "reclutando"].includes(mission.status) && (mission.audience === "ambos" || mission.audience === `${participant.type}s`));
+  return state.missions.filter((mission) => ["activo", "reclutando"].includes(mission.status) && (!mission.audience || mission.audience === "ambos" || mission.audience === `${participant.type}s`));
 }
 function metric(label, value) { return `<div class="metric"><span class="muted">${label}</span><strong>${value}</strong></div>`; }
-function metricCard(label, value, note) { return `<article class="card metric"><span class="muted">${label}</span><strong>${value}</strong><small class="muted">${note}</small></article>`; }
+function metricCard(label, value, note) { return `<article class="card metric" title="${note}"><span class="metric-label"><span class="muted">${label}</span><button class="metric-help" type="button" aria-label="Ayuda sobre ${label}" title="${note}">?</button></span><strong>${value}</strong><small class="muted">${note}</small></article>`; }
 function participantProfileLabel(participant) {
   if (participant.type === "aliado") return `${participant.allyProfile.businessName}, ${participant.allyProfile.role}`;
   return `${participant.device.os}, experiencia ${participant.clientProfile.digitalExperience}`;
@@ -1513,6 +1603,7 @@ function filteredParticipants() {
   return state.participants.filter((participant) => {
     const text = [
       participant.name,
+      participant.email,
       participant.type,
       participant.city,
       participant.department,
@@ -1530,7 +1621,7 @@ function participantSearchSummary() {
       <input data-action="participant-search" value="${adminParticipantQuery}" placeholder="Buscar por nombre, ciudad, tipo o comercio">
     </label>
     <div class="participant-result-list">
-      ${results.map((p) => `<button class="participant-result" data-view="admin-participantes">
+      ${results.map((p) => `<button class="participant-result" data-view="admin-comunidad">
         <strong>${p.name}</strong>
         <span>${p.type} | ${p.city} | ${participantProfileLabel(p)}</span>
       </button>`).join("") || `<p class="empty">No hay coincidencias.</p>`}
@@ -1579,7 +1670,7 @@ function taskBrief(mission) {
   return `<div class="task-brief"><div><p class="demo-tag">Tarea del cliente</p><h2>Responde la prueba</h2><p>Lee la actividad y comparte tu opinion con sinceridad.</p></div></div>`;
 }
 function impactCard(story) {
-  return `<article class="card"><p class="pill ok">${story.participants} participantes</p><h3>${story.title}</h3><p><strong>Se probo:</strong> ${story.tested}</p><p><strong>Aprendimos:</strong> ${story.learned}</p><p><strong>Cambio:</strong> ${story.changed}</p><small class="muted">${story.date}</small></article>`;
+  return `<article class="card"><p class="pill ok">${story.participants} participantes</p><h3>${story.title}</h3><p><strong>Que probamos:</strong> ${story.tested}</p><p><strong>Que aprendimos:</strong> ${story.learned}</p><p><strong>Que cambio:</strong> ${story.changed}</p><small class="muted">${story.date}</small></article>`;
 }
 function chart(title, rows) {
   const max = Math.max(...rows.map(([, value]) => value), 1);
@@ -1645,7 +1736,7 @@ function defaultMissionDraft() {
     role: "Todos",
     digitalExperience: "Todos",
     minLevel: "Explorador",
-    reliability: 70,
+    levels: LEVELS.map((level) => level.name),
     requiredParticipants: 10,
     instructions: "Completa la tarea y responde con sinceridad.",
     questions: ["Que tan claro fue el paso principal?", "Donde dudaste?", "Que cambiarias?"],
@@ -1655,11 +1746,14 @@ function defaultMissionDraft() {
     budget: 12000,
     durationMinutes: 20,
     channel: "remota",
-    confidentiality: false,
     recording: false,
     requiredProfile: {},
     publish: false,
   };
+}
+
+function levelDescription(level) {
+  return ({ Explorador: "Esta comenzando en la comunidad.", Cocreador: "Tiene experiencia previa en misiones.", Especialista: "Participa con frecuencia y entrega feedback de buena calidad.", Embajador: "Tiene trayectoria y alta calidad de participacion." })[level] || "Nivel de la comunidad Co-crea.";
 }
 function defaultSyntheticDraft() {
   const template = defaultSyntheticTemplate();
@@ -1743,3 +1837,4 @@ function initBehaviorTracking() {
 }
 
 if (typeof document !== "undefined") renderApp();
+

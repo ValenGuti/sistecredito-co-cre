@@ -21,7 +21,7 @@ Crear una comunidad de co-creadores con perfilamiento, invitaciones controladas,
 - Selector de rol de demostracion.
 - Misiones, consentimientos, envio de feedback y revision.
 - Puntos, XP, niveles, reputacion y fatiga.
-- Laboratorio sintetico V2 para explorar escenarios con arquetipos, cohortes, perfiles parametrizables, pesos, comparacion demo y calibracion controlada sin sustituir evidencia real.
+- El laboratorio sintetico historico se conserva solo como codigo compatible y no hace parte de la navegacion ni del alcance funcional vigente.
 - Datos ficticios persistidos localmente.
 
 ## Reglas de puntos
@@ -41,7 +41,7 @@ La confiabilidad va de 0 a 100 y considera asistencia, cumplimiento, calidad de 
 ## Flujos
 
 - Participante: inicio, catalogo, detalle, consentimiento, ejecucion, confirmacion, perfil e impacto.
-- Administrador: dashboard, gestion de misiones, wizard de creacion, matching, invitaciones, comunidad, revision de participaciones, comportamiento y laboratorio sintetico.
+- Administrador: dashboard, misiones con reclutamiento y resultados, comunidad, analitica y configuracion.
 
 ## Laboratorio sintetico
 
@@ -50,3 +50,4 @@ El laboratorio permite ensayar entrevistas, mensajes y prototipos con usuarios s
 ## Fuera de alcance
 
 No se implementan autenticacion productiva, integraciones reales, datos reales, canjes reales, decisiones crediticias, videollamadas reales, grabacion de pantalla ni marketplace abierto.
+

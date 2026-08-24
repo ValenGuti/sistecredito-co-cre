@@ -107,7 +107,7 @@ export function createSeedState() {
   ];
 
   const missions = [
-    mission("mis_01", "Nueva consulta de cupo", "Prueba de prototipo", "clientes", "activa", 1500, 100, 20, {
+    mission("mis_01", "Nueva consulta de cupo", "Prueba de prototipo", "clientes", "activo", 1500, 100, 20, {
       description: "Ayudanos a probar una nueva forma de consultar el cupo disponible antes de lanzarla.",
       requiredProfile: { os: ["Android", "iOS"], digitalExperience: ["Basica", "Media", "Alta"] },
       instructions: "Toca el boton Consultar ahora en el prototipo, revisa el mensaje de resultado y cuentanos si la experiencia es clara, facil y confiable.",
@@ -126,19 +126,19 @@ export function createSeedState() {
       channel: "remota",
       benefit: "2.500 puntos Sonadores simulados",
     }),
-    mission("mis_03", "Cual mensaje es mas claro", "Pulso rapido", "clientes", "activa", 300, 25, 5, {
+    mission("mis_03", "Cual mensaje es mas claro", "Pulso rapido", "clientes", "activo", 300, 25, 5, {
       description: "Elige entre dos mensajes y cuentanos cual se entiende mejor.",
       requiredProfile: {},
       channel: "remota",
     }),
-    mission("mis_04", "Prueba anticipada de la aplicacion", "Prueba de aplicacion beta", "clientes", "activa", 3000, 200, 45, {
+    mission("mis_04", "Prueba anticipada de la aplicacion", "Prueba de aplicacion beta", "clientes", "activo", 3000, 200, 45, {
       description: "Prueba una version anticipada de la app y comparte tu experiencia.",
       requiredProfile: { os: ["Android", "iOS"] },
       channel: "beta",
       confidentiality: true,
       recording: true,
     }),
-    mission("mis_05", "Piloto cerrado de beneficios", "Piloto de varios dias", "ambos", "cerrada", 1800, 120, 60, {
+    mission("mis_05", "Piloto cerrado de beneficios", "Piloto de varios dias", "ambos", "cerrado", 1800, 120, 60, {
       description: "Piloto finalizado para validar beneficios simulados.",
       requiredProfile: {},
       channel: "remota",
@@ -238,6 +238,7 @@ function mission(id, name, type, audience, status, points, xp, durationMinutes, 
     xp,
     minLevel: "Explorador",
     minLevelRank: 0,
+    levels: ["Explorador", "Cocreador", "Especialista", "Embajador"],
     requiredProfile: options.requiredProfile,
     instructions: options.instructions ?? "Lee el contexto, realiza la tarea propuesta y comparte comentarios sinceros.",
     questions: options.questions ?? [
@@ -310,3 +311,4 @@ function behavior(id, participantId, missionId, label, zone, x, y, days) {
     createdAt: date.toISOString(),
   };
 }
+
