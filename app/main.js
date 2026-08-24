@@ -601,24 +601,18 @@ function renderEmployeeProfileFields() {
 }
 
 function renderRewardsCatalog(participant) {
-  const products = [
-    { name: "Audifonos inalambricos", category: "Tecnologia", points: 1500, available: true, image: "./assets/brand-extracted/image1.png" },
-    { name: "Bono digital", category: "Bonos", points: 1000, available: true, image: "./assets/brand-extracted/image2.png" },
-    { name: "Experiencia de entretenimiento", category: "Experiencias", points: 2200, available: false, image: "./assets/brand-extracted/image0.png" },
-  ];
   return `
     <div class="section-title">
       <div>
         <h1>Redimir puntos</h1>
-        <p class="muted">Catalogo de referencia mientras se conecta la integracion real con LuegoPago.</p>
+        <p class="muted">Referencia visual del catalogo de redencion para la demo.</p>
       </div>
       <span class="session-pill">Tus puntos disponibles: ${participant.points.toLocaleString("es-CO")} puntos</span>
     </div>
-    <section class="reward-products">${products.map((product) => {
-      const missing = Math.max(0, product.points - participant.points);
-      return `<article class="card reward-product"><img src="${product.image}" alt="${product.name}"><p class="pill">${product.category}</p><h2>${product.name}</h2><p><strong>${product.points.toLocaleString("es-CO")} puntos</strong></p><p class="muted">${product.available ? "Disponible" : "Temporalmente agotado"}</p>${missing ? `<p class="pill warn">Te faltan ${missing.toLocaleString("es-CO")} puntos</p>` : `<button data-action="redeem-reference" ${product.available ? "" : "disabled"}>Redimir</button>`}</article>`;
-    }).join("")}</section>
-    <p class="empty" style="margin-top:1rem">Vista de referencia: no descuenta puntos ni genera transacciones reales.</p>
+    <section class="catalog-reference">
+      <img src="./assets/luegopago-catalog.svg" alt="Catalogo Luegopago de beneficios para redimir puntos" />
+    </section>
+    <p class="empty" style="margin-top:1rem">Esta vista es demostrativa. No descuenta puntos reales ni genera transacciones reales.</p>
   `;
 }
 
