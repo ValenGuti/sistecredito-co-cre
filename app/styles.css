@@ -972,6 +972,24 @@ td button {
 .mission-controls { display: grid; gap: 0.8rem; margin-bottom: 1rem; }
 .mission-controls .tabs { overflow-x: auto; }
 .mission-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; min-width: 240px; }
+.mission-action-menu { position: relative; min-width: 138px; }
+.mission-action-menu summary { cursor: pointer; list-style: none; border: 1px solid var(--sc-blue); border-radius: 6px; color: var(--sc-blue); padding: 0.42rem 0.7rem; font-weight: 800; text-align: center; }
+.mission-action-menu summary::-webkit-details-marker { display: none; }
+.mission-action-menu summary::after { content: " v"; font-size: 0.72rem; }
+.mission-action-menu[open] .mission-actions { position: absolute; z-index: 7; right: 0; top: calc(100% + 0.35rem); display: grid; min-width: 230px; padding: 0.5rem; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 12px 28px rgba(0, 26, 74, 0.16); }
+.mission-action-menu .mission-actions button { width: 100%; text-align: left; justify-content: flex-start; }
+.mission-chart-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; color: var(--muted); font-size: 0.85rem; }
+.chart-legend span { display: flex; align-items: center; gap: 0.4rem; }
+.chart-legend i { display: inline-block; width: 20px; height: 8px; border-radius: 2px; }
+.legend-enrolled, .mission-bar.enrolled { background: var(--sc-blue); }
+.legend-executed, .mission-bar.executed { background: var(--sc-green); }
+.mission-chart-rows { display: grid; gap: 0.9rem; }
+.mission-chart-row { display: grid; grid-template-columns: minmax(190px, 0.35fr) 1fr; gap: 1rem; align-items: center; }
+.mission-chart-row > div:first-child { display: grid; gap: 0.2rem; }
+.mission-chart-row small { color: var(--muted); }
+.mission-chart-bars { display: grid; gap: 0.3rem; }
+.mission-bar { display: flex; justify-content: flex-end; align-items: center; min-width: 34px; height: 24px; border-radius: 3px; color: white; padding: 0 0.4rem; transition: width 180ms ease; }
 .level-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
 .level-option { display: flex; align-items: flex-start; gap: 0.65rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.8rem; }
 .level-option input { width: auto; margin-top: 0.15rem; }
@@ -1123,7 +1141,7 @@ td button {
     border-radius: 999px 999px 0 0;
     transform: none;
   }
-  .hero, .detail-layout, .grid.two, .grid.three, .grid.four, .form-grid, .form-grid.three, .impact-hero, .community-hero, .community-flow, .rewards-hero, .participant-mini-search, .reward-products, .level-options { grid-template-columns: 1fr; }
+  .hero, .detail-layout, .grid.two, .grid.three, .grid.four, .form-grid, .form-grid.three, .impact-hero, .community-hero, .community-flow, .rewards-hero, .participant-mini-search, .reward-products, .level-options, .mission-chart-filters, .mission-chart-row { grid-template-columns: 1fr; }
   .button-row { justify-content: flex-start; }
   .hero-panel { grid-template-columns: 1fr; }
   .hero-brand-image { justify-self: start; max-width: 320px; }

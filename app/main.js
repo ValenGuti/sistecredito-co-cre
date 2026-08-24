@@ -31,6 +31,9 @@ let missionQuery = "";
 let missionStatusFilter = "todos";
 let selectedAdminMissionId = null;
 let editingMissionId = null;
+let dashboardDateFrom = "2026-07-01";
+let dashboardDateTo = "2026-08-31";
+let dashboardMissionId = "todas";
 let loginDraft = {
   email: "",
   password: "",
@@ -64,7 +67,7 @@ let communityProfileDraft = {
 
 const participantTabs = [
   ["inicio", "Inicio"],
-  ["catalogo", "Misiones"],
+  ["catalogo", "Catalogo"],
   ["redimir", "Redimir puntos"],
   ["perfil", "Perfil"],
   ["impacto", "Tu voz genera cambios"],
@@ -229,7 +232,7 @@ function shell() {
           <span class="demo-tag">Modo demostracion</span>
         </div>
         <div class="demo-controls">
-          ${isAdmin ? "" : `<button class="topbar-catalog-link" data-view="redimir">Redimir puntos</button>`}
+          ${isAdmin ? "" : `<button class="topbar-catalog-link" data-view="redimir">Catalogo Luegopago</button>`}
           <button class="utility-action" data-action="notifications" aria-label="Ver notificaciones" aria-expanded="${utilityPanel === "notifications"}">
             <span aria-hidden="true"></span>
             <small>Notificaciones</small>
@@ -657,10 +660,40 @@ function renderAdminDashboard() {
       ${metricCard("Tiempo promedio de ejecucion", execution.days == null ? "Sin datos" : `${execution.days} dias`, execution.count ? `Promedio de las ultimas ${execution.count} misiones cerradas.` : "Se calcula entre inicio y cierre.")}
       ${metricCard("Calidad promedio del feedback", quality.count ? `${quality.score} / 100` : "Sin evaluar", "Evaluacion promedio de utilidad y calidad. Regla local provisional preparada para feedbackQualityAnalyzer.")}
     </section>
-    <div class="section-title"><h2>Comportamiento en prototipos</h2><button class="secondary" data-view="admin-comportamiento">Ver analitica</button></div>
-    ${behaviorSummaryCard()}
-    <p class="empty">Pendiente de homologacion con metricas de prototipos definidas en la linea de Discovery.</p>
+    <div class="section-title"><h2>Misiones por rango de fechas</h2></div>
+    ${renderMissionDashboardChart()}
   `;
+}
+
+function renderMissionDashboardChart() {
+  const from = new Date(`${dashboardDateFrom}T00:00:00`);
+  const to = new Date(`${dashboardDateTo}T23:59:59`);
+  const missionsInRange = state.missions.filter((mission) => {
+    const date = new Date(`${mission.startDate || mission.createdAt?.slice(0, 10)}T12:00:00`);
+    return date >= from && date <= to;
+  });
+  const visibleMissions = dashboardMissionId === "todas" ? missionsInRange : missionsInRange.filter((mission) => mission.id === dashboardMissionId);
+  const rows = visibleMissions.map((mission) => {
+    const enrolled = state.invitations.filter((item) => item.missionId === mission.id && item.status === "aceptada").length;
+    const executed = state.participations.filter((item) => item.missionId === mission.id).length;
+    return { mission, enrolled, executed };
+  });
+  const max = Math.max(1, ...rows.flatMap((row) => [row.enrolled, row.executed]));
+  return `<section class="card mission-dashboard-chart">
+    <div class="mission-chart-filters">
+      <label>Desde<input type="date" data-dashboard-date="from" value="${dashboardDateFrom}"></label>
+      <label>Hasta<input type="date" data-dashboard-date="to" value="${dashboardDateTo}"></label>
+      <label>Mision<select data-action="dashboard-mission">${option("todas", "Todas las misiones", dashboardMissionId)}${missionsInRange.map((mission) => option(mission.id, mission.name, dashboardMissionId)).join("")}</select></label>
+    </div>
+    <div class="chart-legend"><span><i class="legend-enrolled"></i> Participantes inscritos</span><span><i class="legend-executed"></i> Ejecutaron la mision</span></div>
+    <div class="mission-chart-rows">${rows.map(({ mission, enrolled, executed }) => `<article class="mission-chart-row">
+      <div><strong>${mission.name}</strong><small>${mission.startDate} al ${mission.deadline}</small></div>
+      <div class="mission-chart-bars">
+        <span class="mission-bar enrolled" style="width:${Math.max(3, Math.round((enrolled / max) * 100))}%"><b>${enrolled}</b></span>
+        <span class="mission-bar executed" style="width:${Math.max(3, Math.round((executed / max) * 100))}%"><b>${executed}</b></span>
+      </div>
+    </article>`).join("") || `<p class="empty">No hubo misiones en el rango seleccionado.</p>`}</div>
+  </section>`;
 }
 
 function renderAdminSettings() {
@@ -886,7 +919,7 @@ function renderAdminMissions() {
     <div class="table-wrap">
       <table>
         <thead><tr><th>Nombre</th><th>Responsable</th><th>Tipo</th><th>Fecha inicio</th><th>Fecha fin</th><th>Participantes</th><th>Estado</th><th>Acciones</th></tr></thead>
-        <tbody>${missions.map((m) => `<tr><td><strong>${m.name}</strong></td><td>${m.owner}</td><td>${m.type}</td><td>${m.startDate}</td><td>${m.deadline}</td><td>${m.completed} / ${m.requiredParticipants}</td><td><span class="pill ${missionStatusClass(m.status)}">${missionStatusLabel(m.status)}</span></td><td><div class="mission-actions">${missionActionButtons(m)}</div></td></tr>`).join("") || `<tr><td colspan="8"><p class="empty">No hay misiones que coincidan con la busqueda.</p></td></tr>`}</tbody>
+        <tbody>${missions.map((m) => `<tr><td><strong>${m.name}</strong></td><td>${m.owner}</td><td>${m.type}</td><td>${m.startDate}</td><td>${m.deadline}</td><td>${m.completed} / ${m.requiredParticipants}</td><td><span class="pill ${missionStatusClass(m.status)}">${missionStatusLabel(m.status)}</span></td><td><details class="mission-action-menu"><summary>Acciones</summary><div class="mission-actions">${missionActionButtons(m)}</div></details></td></tr>`).join("") || `<tr><td colspan="8"><p class="empty">No hay misiones que coincidan con la busqueda.</p></td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -1350,6 +1383,12 @@ function bindEvents(app) {
   app.querySelector("[data-action='redeem-reference']")?.addEventListener("click", () => toast("Solicitud de redencion registrada solo como referencia."));
   app.querySelector("[data-action='mission-search']")?.addEventListener("change", (event) => { missionQuery = event.target.value; renderApp(); });
   app.querySelector("[data-action='mission-search']")?.addEventListener("keydown", (event) => { if (event.key === "Enter") { missionQuery = event.target.value; renderApp(); } });
+  app.querySelectorAll("[data-dashboard-date]").forEach((input) => input.addEventListener("change", () => {
+    if (input.dataset.dashboardDate === "from") dashboardDateFrom = input.value; else dashboardDateTo = input.value;
+    dashboardMissionId = "todas";
+    renderApp();
+  }));
+  app.querySelector("[data-action='dashboard-mission']")?.addEventListener("change", (event) => { dashboardMissionId = event.target.value; renderApp(); });
   app.querySelectorAll("[data-mission-filter]").forEach((button) => button.addEventListener("click", () => { missionStatusFilter = button.dataset.missionFilter; renderApp(); }));
   app.querySelectorAll("[data-mission-results]").forEach((button) => button.addEventListener("click", () => { selectedAdminMissionId = button.dataset.missionResults; renderApp(); }));
   app.querySelectorAll("[data-edit-mission]").forEach((button) => button.addEventListener("click", () => {
