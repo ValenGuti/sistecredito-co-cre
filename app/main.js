@@ -222,7 +222,8 @@ function shell() {
   const baseTabs = isAdmin ? adminTabs : participantTabs;
   const tabs = currentAuthUser?.profileCompleted ? baseTabs : [["complete-profile", "Completar mi perfil"], ...baseTabs];
   const profile = sessionProfile(isAdmin);
-  if (!tabs.some(([id]) => id === view)) view = isAdmin ? "admin-dashboard" : "inicio";
+  const validSecondaryViews = isAdmin ? ["admin-crear"] : [];
+  if (!tabs.some(([id]) => id === view) && !validSecondaryViews.includes(view)) view = isAdmin ? "admin-dashboard" : "inicio";
   return `
     <div class="app-shell">
       <header class="topbar">
