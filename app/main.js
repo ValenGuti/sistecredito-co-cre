@@ -77,7 +77,6 @@ const adminTabs = [
   ["admin-misiones", "Misiones"],
   ["admin-comunidad", "Comunidad"],
   ["admin-comportamiento", "Analitica"],
-  ["admin-configuracion", "Configuracion"],
 ];
 
 const COLOMBIA_LOCATIONS = {
@@ -644,7 +643,6 @@ function renderAdmin() {
   if (view === "admin-crear") return renderWizard();
   if (view === "admin-comunidad") return renderCommunity();
   if (view === "admin-comportamiento") return renderBehaviorAnalytics();
-  if (view === "admin-configuracion") return renderAdminSettings();
   return renderAdminDashboard();
 }
 
@@ -694,10 +692,6 @@ function renderMissionDashboardChart() {
       </div>
     </article>`).join("") || `<p class="empty">No hubo misiones en el rango seleccionado.</p>`}</div>
   </section>`;
-}
-
-function renderAdminSettings() {
-  return `<div class="section-title"><h1>Configuracion</h1></div><section class="card"><h2>Catalogos de producto</h2><p>Los tipos de mision actuales permanecen centralizados y editables.</p><p class="empty"><strong>TODO Producto:</strong> Validar catalogo definitivo de tipos de mision con Caro Angel.</p></section>`;
 }
 
 function renderSyntheticLab() {

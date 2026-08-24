@@ -8,7 +8,6 @@ El portal administrativo presenta cinco modulos principales:
 - Misiones.
 - Comunidad.
 - Analitica.
-- Configuracion.
 
 Participantes, Invitaciones y Revision se consolidaron en Comunidad y Misiones. El Laboratorio sintetico se retiro de la navegacion y del dashboard. Sus datos historicos permanecen en el estado para no romper sesiones locales existentes.
 

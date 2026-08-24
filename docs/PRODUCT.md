@@ -41,7 +41,7 @@ La confiabilidad va de 0 a 100 y considera asistencia, cumplimiento, calidad de 
 ## Flujos
 
 - Participante: inicio, catalogo, detalle, consentimiento, ejecucion, confirmacion, perfil e impacto.
-- Administrador: dashboard, misiones con reclutamiento y resultados, comunidad, analitica y configuracion.
+- Administrador: dashboard, misiones con reclutamiento y resultados, comunidad y analitica.
 
 ## Laboratorio sintetico
 
