@@ -1,5 +1,5 @@
 import { clearAuthSession, createRegisteredAuthUser, loadAuthSession, loadAuthUsers, roleLabels, saveAuthSession, saveAuthUsers, updateAuthUser, validateLogin } from "../src/auth.mjs";
-import { approveFromStore, approveSyntheticCalibration, completeCommunityProfile, createMission, createRealSyntheticComparison, createRegisteredParticipant, duplicateMission, loadState, proposeSyntheticCalibration, recordBehaviorEvent, rejectParticipation, rejectSyntheticCalibration, resetState, revertSyntheticCalibration, runSyntheticSimulation, sendInvitations, setRole, setSessionRole, submitMission, updateMissionDetails, updateMissionStatus } from "../src/store.mjs";
+import { acceptInvitation, approveFromStore, approveSyntheticCalibration, completeCommunityProfile, createMission, createRealSyntheticComparison, createRegisteredParticipant, duplicateMission, loadState, proposeSyntheticCalibration, recordBehaviorEvent, rejectParticipation, rejectSyntheticCalibration, resetState, revertSyntheticCalibration, runSyntheticSimulation, sendInvitations, setRole, setSessionRole, submitMission, updateMissionDetails, updateMissionStatus } from "../src/store.mjs";
 import { LEVELS, analyzeFeedbackQuality, buildParticipantResponseExport, detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, missionExecutionAverage, missionStateActions, missionSummary, participantResponseExportToCsv, summarizeBehaviorEvents } from "../src/domain.mjs";
 import { percentage } from "../src/synthetic-aggregation.mjs";
 import { cocreaAllyQuestions, cocreaClientQuestions, cocreaCollaboratorQuestions, defaultSyntheticTemplate, summarizeSyntheticSimulation, syntheticDisclaimer } from "../src/synthetic-engine.mjs";
@@ -17,6 +17,7 @@ let draftSynthetic = defaultSyntheticDraft();
 let filters = { duration: "todas", type: "todas", benefit: "todos" };
 let behaviorTrackingReady = false;
 let prototypeTaskStatus = {};
+let missionResponseDraft = { answers: [], comment: "", evidence: "", rating: 4 };
 let authUsers = loadAuthUsers();
 let currentAuthUser = loadAuthSession();
 let isAuthenticated = Boolean(currentAuthUser);
@@ -31,6 +32,8 @@ let missionQuery = "";
 let missionStatusFilter = "todos";
 let selectedAdminMissionId = null;
 let editingMissionId = null;
+let selectingMissionId = null;
+let selectedCommunityParticipantId = null;
 let dashboardDateFrom = "2026-07-01";
 let dashboardDateTo = "2026-08-31";
 let dashboardMissionId = "todas";
@@ -280,12 +283,14 @@ function sessionProfile(isAdmin) {
 }
 
 function sessionNotifications() {
-  if (state.notifications?.length) return state.notifications;
-  return [
+  const participantId = isCurrentAdmin() ? null : currentParticipant()?.id;
+  const invitationNotifications = participantId ? state.invitations.filter((item) => item.participantId === participantId && item.status === "pendiente").map((item) => ({ id: `notification_${item.id}`, type: "invitacion", title: "Nueva invitacion", detail: `Te invitaron a: ${missionById(item.missionId)?.name || "una mision"}.`, read: false })) : [];
+  const base = state.notifications?.length ? state.notifications : [
     { id: "not_1", type: "invitacion", title: "Nueva invitacion", detail: "Tienes una mision disponible para revisar.", read: false },
     { id: "not_2", type: "recordatorio", title: "Recordatorio de mision", detail: "Revisa tus misiones antes de la fecha limite.", read: false },
     { id: "not_3", type: "puntos", title: "Puntos entregados", detail: "Consulta el saldo actualizado en Redimir puntos.", read: true },
   ];
+  return [...invitationNotifications, ...base];
 }
 
 function unreadNotifications() { return sessionNotifications().filter((item) => !item.read); }
@@ -473,10 +478,10 @@ function renderRunMission(participant, mission) {
 function runStepContent(mission, participant) {
   if (runStep === 0) return `<p>Gracias por aportar a ${mission.name}. Tu respuesta honesta es lo mas valioso.</p>`;
   if (runStep === 1) return `<p>${mission.instructions}</p><p class="muted">No compartas informacion personal, financiera ni documentos.</p>`;
-  if (runStep === 2) return `${taskBrief(mission)}${prototypePreview(mission, participant)}<div class="form-grid" style="margin-top:1rem">${mission.questions.map((q, index) => `<label>${q.label}<textarea data-answer="${index}" placeholder="Escribe tu respuesta"></textarea></label>`).join("")}</div>`;
-  if (runStep === 3) return `<label>Carga de evidencia simulada<input id="evidence" value="captura-demo-${mission.id}.png" /></label><p class="muted">No se sube ningun archivo real en esta version.</p>`;
-  if (runStep === 4) return `<label>Comentario final<textarea id="final-comment" placeholder="Cuentanos que mejorarias"></textarea></label>`;
-  if (runStep === 5) return `<label>Como calificas la experiencia?<select id="rating">${[1,2,3,4,5].map((n) => `<option value="${n}" ${n === 4 ? "selected" : ""}>${n} de 5</option>`).join("")}</select></label>`;
+  if (runStep === 2) return `${taskBrief(mission)}${prototypePreview(mission, participant)}<div class="form-grid" style="margin-top:1rem">${mission.questions.map((q, index) => `<label>${q.label}<textarea data-answer="${index}" placeholder="Escribe tu respuesta">${missionResponseDraft.answers[index] || ""}</textarea></label>`).join("")}</div>`;
+  if (runStep === 3) return `<label>Evidencia opcional<input data-response-field="evidence" value="${missionResponseDraft.evidence}" placeholder="Describe o referencia una evidencia" /></label><p class="muted">No se sube ningun archivo real en esta version.</p>`;
+  if (runStep === 4) return `<label>Comentario final<textarea data-response-field="comment" placeholder="Cuentanos que mejorarias">${missionResponseDraft.comment}</textarea></label>`;
+  if (runStep === 5) return `<label>Como calificas la experiencia?<select data-response-field="rating">${[1,2,3,4,5].map((n) => `<option value="${n}" ${n === Number(missionResponseDraft.rating) ? "selected" : ""}>${n} de 5</option>`).join("")}</select></label>`;
   return `<p>Tu aporte quedara en revision. Los puntos se asignaran cuando el equipo valide la participacion.</p>`;
 }
 
@@ -632,6 +637,7 @@ function renderImpact() {
 
 function renderAdmin() {
   if (view === "complete-profile") return renderCompleteProfile();
+  if (selectingMissionId) return renderMissionParticipantSelection(selectingMissionId);
   if (selectedAdminMissionId) return renderMissionResults(selectedAdminMissionId);
   if (view === "admin-misiones") return renderAdminMissions();
   if (view === "admin-crear") return renderWizard();
@@ -930,6 +936,21 @@ function missionActionButtons(mission) {
 
 function missionStatusLabel(status) { return ({ creado: "Creado", reclutando: "Reclutando", activo: "Activo", cerrado: "Cerrado", cancelado: "Cancelado" })[status] || status; }
 function missionStatusClass(status) { return status === "activo" ? "ok" : status === "cancelado" ? "bad" : status === "reclutando" ? "warn" : "info"; }
+
+function renderMissionParticipantSelection(missionId) {
+  const mission = missionById(missionId);
+  const eligible = filterEligibleParticipants(state.participants, mission).filter((participant) => participant.status === "activo");
+  const alreadyInvited = new Set(state.invitations.filter((item) => item.missionId === missionId).map((item) => item.participantId));
+  return `
+    <button class="ghost" data-action="back-missions">Volver a Misiones</button>
+    <div class="section-title"><div><h1>Seleccionar participante</h1><p class="muted">Elige una persona de Comunidad para enviarle la encuesta.</p></div><span class="pill info">${mission.name}</span></div>
+    <section class="card participant-selection-summary"><p><strong>Tipo:</strong> ${mission.type}</p><p><strong>Preguntas:</strong> ${mission.questions.length}</p><p><strong>Fecha limite:</strong> ${mission.deadline}</p></section>
+    <div class="table-wrap participant-selection" style="margin-top:1rem"><table><thead><tr><th>Seleccionar</th><th>Participante</th><th>Tipo</th><th>Ciudad</th><th>Nivel</th><th>Estado</th></tr></thead><tbody>
+      ${eligible.map((participant) => `<tr><td><input type="radio" name="community-participant" data-community-participant="${participant.id}" ${selectedCommunityParticipantId === participant.id ? "checked" : ""} ${alreadyInvited.has(participant.id) ? "disabled" : ""}></td><td><strong>${participant.name}</strong></td><td>${participant.type}</td><td>${participant.city}</td><td>${participant.level}</td><td>${alreadyInvited.has(participant.id) ? `<span class="pill ok">Invitacion enviada</span>` : `<span class="pill info">Disponible</span>`}</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="button-row" style="margin-top:1rem"><button data-action="send-selected-invitation" data-mission-id="${missionId}" ${selectedCommunityParticipantId ? "" : "disabled"}>Enviar invitacion</button></div>
+  `;
+}
 
 function renderWizard() {
   return `
@@ -1322,7 +1343,12 @@ function bindEvents(app) {
   });
   app.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { profileMenuOpen = false; view = button.dataset.view; selectedMissionId = null; selectedAdminMissionId = null; utilityPanel = null; renderApp(); }));
   app.querySelector("[data-action='reset']")?.addEventListener("click", () => { profileMenuOpen = false; state = resetState(); selectedMissionId = null; view = "inicio"; toast("Datos de demostracion restablecidos."); renderApp(); });
-  app.querySelectorAll("[data-open-mission]").forEach((button) => button.addEventListener("click", () => { selectedMissionId = button.dataset.openMission; missionStep = "detail"; renderApp(); }));
+  app.querySelectorAll("[data-open-mission]").forEach((button) => button.addEventListener("click", () => {
+    selectedMissionId = button.dataset.openMission;
+    state = acceptInvitation(state, currentParticipant().id, selectedMissionId);
+    missionStep = "detail";
+    renderApp();
+  }));
   app.querySelector("[data-action='back-catalog']")?.addEventListener("click", () => { selectedMissionId = null; view = "catalogo"; renderApp(); });
   app.querySelector("[data-action='start-consent']")?.addEventListener("click", () => { missionStep = "consent"; renderApp(); });
   app.querySelector("[data-action='mission-detail']")?.addEventListener("click", () => { missionStep = "detail"; renderApp(); });
@@ -1334,12 +1360,20 @@ function bindEvents(app) {
     }
     missionStep = "run";
     runStep = 0;
+    missionResponseDraft = { answers: [], comment: "", evidence: "", rating: 4 };
     renderApp();
   });
+  app.querySelectorAll("[data-answer]").forEach((input) => input.addEventListener("input", () => { missionResponseDraft.answers[Number(input.dataset.answer)] = input.value; }));
+  app.querySelectorAll("[data-response-field]").forEach((input) => input.addEventListener("input", () => { missionResponseDraft[input.dataset.responseField] = input.value; }));
+  app.querySelectorAll("select[data-response-field]").forEach((input) => input.addEventListener("change", () => { missionResponseDraft[input.dataset.responseField] = input.value; }));
   app.querySelector("[data-action='next-run']")?.addEventListener("click", () => {
     const mission = missionById(selectedMissionId);
     if (runStep === 2 && mission?.type === "Prueba de prototipo" && !prototypeTaskStatus[mission.id]) {
       toast("Primero toca el boton del prototipo para completar la tarea.");
+      return;
+    }
+    if (runStep === 2 && (mission?.type === "Encuesta" || mission?.type === "Pulso rapido") && missionResponseDraft.answers.filter((answer) => String(answer || "").trim()).length < mission.questions.length) {
+      toast("Responde todas las preguntas de la encuesta antes de continuar.");
       return;
     }
     runStep += 1;
@@ -1351,10 +1385,10 @@ function bindEvents(app) {
     state = submitMission(state, currentParticipant().id, mission.id, {
       consentType: `voluntario+datos${mission.confidentiality ? "+confidencialidad" : ""}${mission.recording ? "+grabacion" : ""}`,
       durationMinutes: mission.durationMinutes,
-      rating: 4,
-      comment: "La experiencia fue clara. Sugiero reforzar el texto del boton principal antes del lanzamiento.",
-      evidence: `captura-demo-${mission.id}.png`,
-      answers: ["Facil de completar", "El mensaje principal fue claro", "Mejoraria la explicacion final"],
+      rating: Number(missionResponseDraft.rating || 4),
+      comment: missionResponseDraft.comment || "Encuesta completada.",
+      evidence: missionResponseDraft.evidence || "Sin evidencia adjunta",
+      answers: missionResponseDraft.answers,
     });
     missionStep = "confirmation";
     renderApp();
@@ -1387,15 +1421,24 @@ function bindEvents(app) {
     view = "admin-crear";
     renderApp();
   }));
-  app.querySelector("[data-action='back-missions']")?.addEventListener("click", () => { selectedAdminMissionId = null; view = "admin-misiones"; renderApp(); });
+  app.querySelector("[data-action='back-missions']")?.addEventListener("click", () => { selectedAdminMissionId = null; selectingMissionId = null; selectedCommunityParticipantId = null; view = "admin-misiones"; renderApp(); });
+  app.querySelectorAll("[data-community-participant]").forEach((input) => input.addEventListener("change", () => { selectedCommunityParticipantId = input.dataset.communityParticipant; renderApp(); }));
+  app.querySelector("[data-action='send-selected-invitation']")?.addEventListener("click", (event) => {
+    if (!selectedCommunityParticipantId) return;
+    const missionId = event.currentTarget.dataset.missionId;
+    state = sendInvitations(state, missionId, [selectedCommunityParticipantId], "Correo");
+    const participant = state.participants.find((item) => item.id === selectedCommunityParticipantId);
+    toast(`Invitacion enviada a ${participant?.name || "la persona seleccionada"}.`);
+    selectedCommunityParticipantId = null;
+    renderApp();
+  });
   app.querySelectorAll("[data-mission-action]").forEach((button) => button.addEventListener("click", () => {
     const missionId = button.dataset.missionId;
     const action = button.dataset.missionAction;
     const mission = missionById(missionId);
     if (action === "seleccionar") {
-      const selected = filterEligibleParticipants(state.participants, mission).filter((participant) => participant.status !== "pausado").slice(0, mission.requiredParticipants).map((participant) => participant.id);
-      state = { ...state, missionSelections: { ...(state.missionSelections || {}), [missionId]: selected } };
-      toast(`${selected.length} participantes seleccionados desde Comunidad.`);
+      selectingMissionId = missionId;
+      selectedCommunityParticipantId = null;
     } else if (action === "enviar") {
       const selected = state.missionSelections?.[missionId] || filterEligibleParticipants(state.participants, mission).slice(0, mission.requiredParticipants).map((participant) => participant.id);
       state = sendInvitations(state, missionId, selected, "Correo");
@@ -1616,7 +1659,8 @@ function startSession(user) {
 
 function missionById(id) { return state.missions.find((mission) => mission.id === id); }
 function availableMissions(participant) {
-  return state.missions.filter((mission) => ["activo", "reclutando"].includes(mission.status) && (!mission.audience || mission.audience === "ambos" || mission.audience === `${participant.type}s`));
+  const invitedMissionIds = new Set(state.invitations.filter((invitation) => invitation.participantId === participant.id && ["pendiente", "aceptada"].includes(invitation.status)).map((invitation) => invitation.missionId));
+  return state.missions.filter((mission) => invitedMissionIds.has(mission.id) && ["activo", "reclutando"].includes(mission.status) && (!mission.audience || mission.audience === "ambos" || mission.audience === `${participant.type}s`));
 }
 function metric(label, value) { return `<div class="metric"><span class="muted">${label}</span><strong>${value}</strong></div>`; }
 function metricCard(label, value, note) { return `<article class="card metric" title="${note}"><span class="metric-label"><span class="muted">${label}</span><button class="metric-help" type="button" aria-label="Ayuda sobre ${label}" title="${note}">?</button></span><strong>${value}</strong><small class="muted">${note}</small></article>`; }
@@ -1663,6 +1707,9 @@ function missionPills(mission, match) {
   return `<span class="pill info">${mission.type}</span><span class="pill">${mission.channel}</span><span class="pill ${match.eligible ? "ok" : "warn"}">${match.eligible ? "Recomendada" : "No elegible"}</span><span class="pill">${mission.requiredParticipants - mission.completed} por completar</span>`;
 }
 function prototypePreview(mission, participant) {
+  if (mission.type === "Encuesta" || mission.type === "Pulso rapido") {
+    return `<div class="survey-preview"><p class="demo-tag">${mission.type}</p><h3>${mission.name}</h3><p>${mission.instructions}</p><div class="survey-question-preview">${mission.questions.map((question, index) => `<p><strong>${index + 1}.</strong> ${question.label}</p>`).join("")}</div></div>`;
+  }
   if (mission.type === "Prueba de aplicacion beta") {
     const label = participant.device.os === "iOS" ? "Abrir en TestFlight" : participant.device.os === "Android" ? "Abrir en Google Play Testing" : "Abrir en Firebase App Distribution";
     const opened = prototypeTaskStatus[mission.id];
@@ -1680,6 +1727,7 @@ function prototypePreview(mission, participant) {
   </div>`;
 }
 function taskBrief(mission) {
+  if (mission.type === "Encuesta" || mission.type === "Pulso rapido") return `<div class="task-brief"><div><p class="demo-tag">Encuesta</p><h2>Responde todas las preguntas</h2><p>Lee cada pregunta y comparte una respuesta clara. Al finalizar, envia tu feedback.</p></div></div>`;
   if (mission.type === "Prueba de prototipo") {
     const done = prototypeTaskStatus[mission.id];
     return `<div class="task-brief">

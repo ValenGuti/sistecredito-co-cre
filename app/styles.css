@@ -995,6 +995,12 @@ td button {
 .level-option input { width: auto; margin-top: 0.15rem; }
 .level-option span { display: grid; gap: 0.2rem; }
 .level-option small { color: var(--muted); font-weight: 500; }
+.participant-selection input[type="radio"] { width: 18px; height: 18px; min-height: 18px; }
+.participant-selection-summary { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.participant-selection-summary p { margin: 0; }
+.survey-preview { border: 1px solid var(--line); border-radius: 8px; background: #f8fbff; padding: 1rem; }
+.survey-question-preview { display: grid; gap: 0.4rem; margin-top: 0.8rem; }
+.survey-question-preview p { margin: 0; padding: 0.65rem; border-radius: 6px; background: white; }
 .empty { border: 1px dashed #b9c7d3; background: #fbfdff; border-radius: var(--radius); padding: 1rem; color: var(--muted); }
 .community-hero {
   display: grid;

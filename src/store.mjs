@@ -263,7 +263,8 @@ export function updateMissionStatus(state, missionId, nextStatus) {
 }
 
 export function sendInvitations(state, missionId, participantIds, channel) {
-  const invitations = participantIds.map((participantId) => ({
+  const existing = new Set(state.invitations.filter((item) => item.missionId === missionId).map((item) => item.participantId));
+  const invitations = participantIds.filter((participantId) => !existing.has(participantId)).map((participantId) => ({
     id: cryptoId("inv"),
     participantId,
     missionId,
@@ -279,6 +280,17 @@ export function sendInvitations(state, missionId, participantIds, channel) {
       mission.id === missionId ? { ...mission, status: "reclutando", invited: mission.invited + invitations.length, updatedAt: now() } : mission,
     ),
     auditEvents: [...state.auditEvents, { id: cryptoId("audit"), actor: "Administrador demo", action: "envio_invitaciones", targetId: missionId, createdAt: now() }],
+  });
+}
+
+export function acceptInvitation(state, participantId, missionId) {
+  const invitation = state.invitations.find((item) => item.participantId === participantId && item.missionId === missionId && item.status === "pendiente");
+  if (!invitation) return state;
+  return saveState({
+    ...state,
+    invitations: state.invitations.map((item) => item.id === invitation.id ? { ...item, status: "aceptada", updatedAt: now() } : item),
+    missions: state.missions.map((mission) => mission.id === missionId ? { ...mission, accepted: mission.accepted + 1, updatedAt: now() } : mission),
+    auditEvents: [...state.auditEvents, { id: cryptoId("audit"), actor: participantId, action: "acepto_invitacion", targetId: missionId, createdAt: now() }],
   });
 }
 
