@@ -771,7 +771,7 @@ label { display: grid; gap: 0.38rem; color: #344054; font-weight: 700; font-size
 .catalog-reference img {
   display: block;
   width: 100%;
-  min-width: 860px;
+  min-width: 760px;
   height: auto;
 }
 .rewards-hero {
@@ -1167,4 +1167,3 @@ td button {
   .hero-brand-image { max-width: 100%; }
   .login-brand-panel h1 { font-size: 1.8rem; }
 }
-

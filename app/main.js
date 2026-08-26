@@ -70,7 +70,7 @@ let communityProfileDraft = {
 
 const participantTabs = [
   ["inicio", "Inicio"],
-  ["catalogo", "Catalogo"],
+  ["catalogo", "Misiones"],
   ["redimir", "Redimir puntos"],
   ["perfil", "Perfil"],
   ["impacto", "Tu voz genera cambios"],
@@ -235,7 +235,7 @@ function shell() {
           <span class="demo-tag">Modo demostracion</span>
         </div>
         <div class="demo-controls">
-          ${isAdmin ? "" : `<button class="topbar-catalog-link" data-view="redimir">Catalogo Luegopago</button>`}
+          ${isAdmin ? "" : `<button class="topbar-catalog-link" data-view="redimir">Redimir puntos</button>`}
           <button class="utility-action" data-action="notifications" aria-label="Ver notificaciones" aria-expanded="${utilityPanel === "notifications"}">
             <span aria-hidden="true"></span>
             <small>Notificaciones</small>
@@ -361,7 +361,7 @@ function renderParticipantHome(participant) {
       ${metricCard("Confiabilidad", `${participant.reliability}/100`, "Indicador de consistencia y calidad historica. La formula actual promedia cumplimiento, asistencia, evidencia, claridad, instrucciones y confidencialidad.")}
       ${metricCard("Proxima actividad", pending[0] ? "Resultado pendiente" : "Sin agenda", pending[0] ? "El equipo validara tu aporte." : "Explora misiones recomendadas.")}
     </section>
-    <div class="section-title"><h2>Misiones recomendadas</h2><button class="secondary" data-view="catalogo">Abrir catalogo</button></div>
+    <div class="section-title"><h2>Misiones recomendadas</h2><button class="secondary" data-view="catalogo">Ver todas las misiones</button></div>
     <section class="grid three">${recommended.map((mission) => missionCard(mission, participant)).join("")}</section>
     <div class="section-title"><h2>Beneficios disponibles</h2><button class="secondary" data-view="redimir">Ir a redimir</button></div>
     <section class="grid two">
@@ -387,7 +387,7 @@ function renderCatalog(participant) {
     return true;
   });
   return `
-    <div class="section-title"><h1>Catalogo de misiones</h1></div>
+    <div class="section-title"><h1>Misiones disponibles</h1></div>
     <div class="filters card">
       <label>Duracion
         <select data-filter="duration">
@@ -538,7 +538,7 @@ function renderProfile(participant) {
         <h2>Redime tus puntos disponibles</h2>
         <p class="muted">Consulta beneficios, bonos o experiencias simuladas disponibles para tu perfil.</p>
       </div>
-      <button data-view="redimir">Abrir catalogo</button>
+      <button data-view="redimir">Redimir puntos</button>
     </section>
   `;
 }
@@ -616,7 +616,7 @@ function renderRewardsCatalog(participant) {
       <span class="session-pill">Tus puntos disponibles: ${participant.points.toLocaleString("es-CO")} puntos</span>
     </div>
     <section class="catalog-reference">
-      <img src="./assets/luegopago-catalog.svg" alt="Catalogo Luegopago de beneficios para redimir puntos" />
+      <img src="./assets/catalogo-redimir-puntos.png" alt="Catalogo de productos disponibles para redimir puntos" />
     </section>
     <p class="empty" style="margin-top:1rem">Esta vista es demostrativa. No descuenta puntos reales ni genera transacciones reales.</p>
   `;
@@ -1913,4 +1913,3 @@ function initBehaviorTracking() {
 }
 
 if (typeof document !== "undefined") renderApp();
-
