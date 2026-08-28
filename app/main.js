@@ -1725,8 +1725,8 @@ function prototypePreview(mission, participant) {
     return `<div class="prototype-comparison" data-prototype-surface>
       <div class="comparison-head"><div><p class="demo-tag">Comparacion de prototipos</p><h3>Explora las dos alternativas</h3><p>Abre A y B, identifica sus diferencias y responde cual prefieres.</p></div><span class="pill ${bothExplored ? "ok" : "warn"}">${bothExplored ? "Dos prototipos revisados" : "Faltan prototipos por revisar"}</span></div>
       <div class="comparison-grid">
-        <article class="comparison-option ${explored.prototypeA ? "explored" : ""}"><span class="comparison-label">Prototipo A</span><h4>Consulta resumida</h4><p>Una pantalla breve con el cupo y una accion principal.</p><button class="secondary" type="button" data-track-label="Explorar prototipo A" data-prototype-zone="prototipo A" data-prototype-action="comparison-prototypeA">${explored.prototypeA ? "Prototipo A revisado" : "Explorar prototipo A"}</button></article>
-        <article class="comparison-option ${explored.prototypeB ? "explored" : ""}"><span class="comparison-label">Prototipo B</span><h4>Consulta guiada</h4><p>Una pantalla con contexto adicional antes de mostrar el cupo.</p><button class="secondary" type="button" data-track-label="Explorar prototipo B" data-prototype-zone="prototipo B" data-prototype-action="comparison-prototypeB">${explored.prototypeB ? "Prototipo B revisado" : "Explorar prototipo B"}</button></article>
+        <article class="comparison-option ${explored.prototypeA ? "explored" : ""}"><span class="comparison-label">Prototipo A</span><h4>Consulta resumida</h4><p>Una pantalla breve con el cupo y una accion principal.</p><a class="secondary" href="https://iniciativa-1001086.vercel.app/proveedores" target="_blank" rel="noopener noreferrer" data-track-label="Revisar prototipo A" data-prototype-zone="prototipo A" data-prototype-action="comparison-prototypeA">${explored.prototypeA ? "Prototipo A revisado" : "Revisar prototipo A"}</a></article>
+        <article class="comparison-option ${explored.prototypeB ? "explored" : ""}"><span class="comparison-label">Prototipo B</span><h4>Consulta guiada</h4><p>Una pantalla con contexto adicional antes de mostrar el cupo.</p><a class="secondary" href="https://v0-pos-inventory-dashboard-tau.vercel.app/" target="_blank" rel="noopener noreferrer" data-track-label="Probar prototipo B" data-prototype-zone="prototipo B" data-prototype-action="comparison-prototypeB">${explored.prototypeB ? "Prototipo B revisado" : "Probar prototipo B"}</a></article>
       </div>
       ${bothExplored ? `<p class="task-success">Listo. Ya puedes comparar ambas experiencias en las preguntas.</p>` : ""}
     </div>`;
@@ -1915,7 +1915,7 @@ function initBehaviorTracking() {
   behaviorTrackingReady = true;
   document.addEventListener("click", (event) => {
     if (isCurrentAdmin() || !selectedMissionId || !(event.target instanceof Element)) return;
-    const target = event.target.closest("[data-track-label], button");
+    const target = event.target.closest("[data-track-label], button, a");
     if (!target) return;
     const surface = event.target.closest("[data-prototype-surface]");
     const rect = surface?.getBoundingClientRect();
