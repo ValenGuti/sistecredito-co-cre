@@ -430,10 +430,17 @@ function normalizeState(state) {
       },
     };
   });
+  const seed = createSeedState();
+  const comparisonMission = seed.missions.find((mission) => mission.id === "mis_06");
+  if (comparisonMission && !missions.some((mission) => mission.id === comparisonMission.id)) missions.push(comparisonMission);
+  const invitations = [...(state.invitations || [])];
+  const comparisonInvitation = seed.invitations.find((invitation) => invitation.id === "inv_06");
+  if (comparisonInvitation && !invitations.some((invitation) => invitation.id === comparisonInvitation.id)) invitations.push(comparisonInvitation);
   return {
     ...state,
     schemaVersion: 3,
     missions,
+    invitations,
     behaviorEvents: state.behaviorEvents || [],
     auditEvents: state.auditEvents || [],
     impactStories: state.impactStories || [],
@@ -490,4 +497,3 @@ function updateModelQuality(state, comparison) {
     thresholds: { moderate: 0.68, high: 0.86, minimumComparisonsForHigh: 8 },
   };
 }
-

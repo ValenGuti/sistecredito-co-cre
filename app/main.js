@@ -67,6 +67,7 @@ let communityProfileDraft = {
   area: "",
   position: "",
 };
+const rewardsCatalogImageUrl = new URL("./assets/catalogo-redimir-puntos.png", import.meta.url).href;
 
 const participantTabs = [
   ["inicio", "Inicio"],
@@ -616,7 +617,7 @@ function renderRewardsCatalog(participant) {
       <span class="session-pill">Tus puntos disponibles: ${participant.points.toLocaleString("es-CO")} puntos</span>
     </div>
     <section class="catalog-reference">
-      <img src="./assets/catalogo-redimir-puntos.png" alt="Catalogo de productos disponibles para redimir puntos" />
+      <img src="${rewardsCatalogImageUrl}" alt="Catalogo de productos disponibles para redimir puntos" />
     </section>
     <p class="empty" style="margin-top:1rem">Esta vista es demostrativa. No descuenta puntos reales ni genera transacciones reales.</p>
   `;
@@ -1369,9 +1370,14 @@ function bindEvents(app) {
   app.querySelectorAll("select[data-response-field]").forEach((input) => input.addEventListener("change", () => { missionResponseDraft[input.dataset.responseField] = input.value; }));
   app.querySelector("[data-action='next-run']")?.addEventListener("click", () => {
     const mission = missionById(selectedMissionId);
-    if (runStep === 2 && mission?.type === "Prueba de prototipo" && !prototypeTaskStatus[mission.id]) {
-      toast("Primero toca el boton del prototipo para completar la tarea.");
-      return;
+    if (runStep === 2 && mission?.type === "Prueba de prototipo") {
+      const taskDone = mission.comparison
+        ? prototypeTaskStatus[mission.id]?.prototypeA && prototypeTaskStatus[mission.id]?.prototypeB
+        : prototypeTaskStatus[mission.id];
+      if (!taskDone) {
+        toast(mission.comparison ? "Explora el prototipo A y el B antes de continuar." : "Primero toca el boton del prototipo para completar la tarea.");
+        return;
+      }
     }
     if (runStep === 2 && (mission?.type === "Encuesta" || mission?.type === "Pulso rapido") && missionResponseDraft.answers.filter((answer) => String(answer || "").trim()).length < mission.questions.length) {
       toast("Responde todas las preguntas de la encuesta antes de continuar.");
@@ -1708,6 +1714,18 @@ function missionPills(mission, match) {
   return `<span class="pill info">${mission.type}</span><span class="pill">${mission.channel}</span><span class="pill ${match.eligible ? "ok" : "warn"}">${match.eligible ? "Recomendada" : "No elegible"}</span><span class="pill">${mission.requiredParticipants - mission.completed} por completar</span>`;
 }
 function prototypePreview(mission, participant) {
+  if (mission.comparison) {
+    const explored = prototypeTaskStatus[mission.id] || {};
+    const bothExplored = explored.prototypeA && explored.prototypeB;
+    return `<div class="prototype-comparison" data-prototype-surface>
+      <div class="comparison-head"><div><p class="demo-tag">Comparacion de prototipos</p><h3>Explora las dos alternativas</h3><p>Abre A y B, identifica sus diferencias y responde cual prefieres.</p></div><span class="pill ${bothExplored ? "ok" : "warn"}">${bothExplored ? "Dos prototipos revisados" : "Faltan prototipos por revisar"}</span></div>
+      <div class="comparison-grid">
+        <article class="comparison-option ${explored.prototypeA ? "explored" : ""}"><span class="comparison-label">Prototipo A</span><h4>Consulta resumida</h4><p>Una pantalla breve con el cupo y una accion principal.</p><button class="secondary" type="button" data-track-label="Explorar prototipo A" data-prototype-zone="prototipo A" data-prototype-action="comparison-prototypeA">${explored.prototypeA ? "Prototipo A revisado" : "Explorar prototipo A"}</button></article>
+        <article class="comparison-option ${explored.prototypeB ? "explored" : ""}"><span class="comparison-label">Prototipo B</span><h4>Consulta guiada</h4><p>Una pantalla con contexto adicional antes de mostrar el cupo.</p><button class="secondary" type="button" data-track-label="Explorar prototipo B" data-prototype-zone="prototipo B" data-prototype-action="comparison-prototypeB">${explored.prototypeB ? "Prototipo B revisado" : "Explorar prototipo B"}</button></article>
+      </div>
+      ${bothExplored ? `<p class="task-success">Listo. Ya puedes comparar ambas experiencias en las preguntas.</p>` : ""}
+    </div>`;
+  }
   if (mission.type === "Encuesta" || mission.type === "Pulso rapido") {
     return `<div class="survey-preview"><p class="demo-tag">${mission.type}</p><h3>${mission.name}</h3><p>${mission.instructions}</p><div class="survey-question-preview">${mission.questions.map((question, index) => `<p><strong>${index + 1}.</strong> ${question.label}</p>`).join("")}</div></div>`;
   }
@@ -1731,6 +1749,10 @@ function taskBrief(mission) {
   if (mission.type === "Encuesta" || mission.type === "Pulso rapido") return `<div class="task-brief"><div><p class="demo-tag">Encuesta</p><h2>Responde todas las preguntas</h2><p>Lee cada pregunta y comparte una respuesta clara. Al finalizar, envia tu feedback.</p></div></div>`;
   if (mission.type === "Prueba de prototipo") {
     const done = prototypeTaskStatus[mission.id];
+    if (mission.comparison) {
+      const bothExplored = done?.prototypeA && done?.prototypeB;
+      return `<div class="task-brief"><div><p class="demo-tag">Tarea del cliente</p><h2>Compara los dos prototipos</h2><p>Explora el prototipo A y el B. Despues responde cual te parecio mas claro, facil y confiable.</p></div><span class="pill ${bothExplored ? "ok" : "warn"}">${bothExplored ? "Comparacion completada" : "Explora A y B"}</span></div>`;
+    }
     return `<div class="task-brief">
       <div>
         <p class="demo-tag">${done ? "Tarea completada" : "Tarea del cliente"}</p>
@@ -1905,7 +1927,12 @@ function initBehaviorTracking() {
       y: Number.isFinite(y) ? y : null,
     });
     if (target.dataset.prototypeAction) {
-      prototypeTaskStatus = { ...prototypeTaskStatus, [selectedMissionId]: target.dataset.prototypeAction };
+      const action = target.dataset.prototypeAction;
+      const currentStatus = prototypeTaskStatus[selectedMissionId] || {};
+      const updatedStatus = action.startsWith("comparison-")
+        ? { ...currentStatus, [action.replace("comparison-", "")]: true }
+        : action;
+      prototypeTaskStatus = { ...prototypeTaskStatus, [selectedMissionId]: updatedStatus };
       toast("Interaccion registrada en el prototipo.");
       renderApp();
     }

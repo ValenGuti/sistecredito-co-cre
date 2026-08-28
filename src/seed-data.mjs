@@ -143,6 +143,19 @@ export function createSeedState() {
       requiredProfile: {},
       channel: "remota",
     }),
+    mission("mis_06", "Compara dos prototipos de consulta de cupo", "Prueba de prototipo", "clientes", "activo", 1200, 90, 15, {
+      description: "Compara dos alternativas para consultar tu cupo y ayudanos a elegir la mas clara antes de continuar el diseno.",
+      requiredProfile: { os: ["Android", "iOS"], digitalExperience: ["Basica", "Media", "Alta"] },
+      instructions: "Explora el prototipo A y el prototipo B. Luego compara que opcion se entiende mejor y explica por que.",
+      questions: [
+        { id: "mis_06_q1", label: "Cual prototipo prefieres: A o B? Por que?", type: "text" },
+        { id: "mis_06_q2", label: "En cual alternativa entendiste mas rapido la informacion del cupo?", type: "text" },
+        { id: "mis_06_q3", label: "Que mejoraria para que ambas opciones sean mas claras?", type: "text" },
+      ],
+      channel: "remota",
+      confidentiality: true,
+      comparison: true,
+    }),
   ];
 
   const invitations = [
@@ -151,6 +164,7 @@ export function createSeedState() {
     invite("inv_03", "cli_01", "mis_04", "pendiente", "WhatsApp", -1),
     invite("inv_04", "cli_01", "mis_05", "cerrada", "Aplicacion", -6),
     invite("inv_05", "ali_02", "mis_02", "pendiente", "Credinet", -1),
+    invite("inv_06", "cli_01", "mis_06", "pendiente", "Aplicacion", -1),
   ];
 
   const participations = [
@@ -248,6 +262,7 @@ function mission(id, name, type, audience, status, points, xp, durationMinutes, 
     ],
     confidentiality: options.confidentiality ?? false,
     recording: options.recording ?? false,
+    comparison: options.comparison ?? false,
     channel: options.channel ?? "remota",
     status,
     participantMode: "real",
@@ -311,4 +326,3 @@ function behavior(id, participantId, missionId, label, zone, x, y, days) {
     createdAt: date.toISOString(),
   };
 }
-
