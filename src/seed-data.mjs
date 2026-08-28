@@ -143,9 +143,9 @@ export function createSeedState() {
       requiredProfile: {},
       channel: "remota",
     }),
-    mission("mis_06", "Compara dos prototipos de consulta de cupo", "Prueba de prototipo", "clientes", "activo", 1200, 90, 15, {
+    mission("mis_06", "Compara dos prototipos de consulta de cupo", "Prueba de prototipo", "clientes_y_empleados", "activo", 1200, 90, 15, {
       description: "Compara dos alternativas para consultar tu cupo y ayudanos a elegir la mas clara antes de continuar el diseno.",
-      requiredProfile: { os: ["Android", "iOS"], digitalExperience: ["Basica", "Media", "Alta"] },
+      requiredProfile: {},
       instructions: "Explora el prototipo A y el prototipo B. Luego compara que opcion se entiende mejor y explica por que.",
       questions: [
         { id: "mis_06_q1", label: "Cual prototipo prefieres: A o B? Por que?", type: "text" },

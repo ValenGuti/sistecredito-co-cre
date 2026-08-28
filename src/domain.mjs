@@ -136,11 +136,23 @@ export function recommendInvitations(requiredParticipants, estimatedCompletionRa
   return Math.ceil(required / rate);
 }
 
+/**
+ * Determina si una audiencia de mision incluye el tipo de participante.
+ * @param {string | undefined} audience
+ * @param {string} participantType
+ * @returns {boolean}
+ */
+export function missionAudienceMatches(audience, participantType) {
+  if (!audience || audience === "ambos") return ["cliente", "aliado"].includes(participantType);
+  if (audience === "clientes_y_empleados") return ["cliente", "empleado"].includes(participantType);
+  return audience === `${participantType}s`;
+}
+
 export function matchParticipant(participant, mission) {
   const reasons = [];
   if (participant.status === "pausado") reasons.push("Tiene invitaciones pausadas temporalmente.");
   if (participant.status === "suspendido") reasons.push("No esta disponible para nuevas misiones.");
-  if (mission.audience && mission.audience !== "ambos" && participant.type !== mission.audience.slice(0, -1)) {
+  if (!missionAudienceMatches(mission.audience, participant.type)) {
     reasons.push(participant.type === "cliente" ? "Esta mision esta dirigida a aliados." : "Esta mision esta dirigida a clientes.");
   }
   if (mission.levels?.length && !mission.levels.includes(participant.level)) reasons.push("El nivel no esta habilitado para esta mision.");
@@ -311,4 +323,3 @@ function daysBefore(date, days) {
   copy.setDate(copy.getDate() - days);
   return copy;
 }
-

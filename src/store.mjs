@@ -417,7 +417,9 @@ function normalizeState(state) {
             { id: "mis_01_q3", label: "Que cambiarias antes de lanzar esta consulta?", type: "text" },
           ],
         }
-      : mission;
+      : mission.id === "mis_06"
+        ? { ...mission, audience: "clientes_y_empleados", requiredProfile: {}, comparison: true }
+        : mission;
     return {
       ...normalizedMission,
       status: normalizeMissionStatus(normalizedMission.status),

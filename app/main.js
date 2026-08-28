@@ -1,6 +1,6 @@
 import { clearAuthSession, createRegisteredAuthUser, loadAuthSession, loadAuthUsers, roleLabels, saveAuthSession, saveAuthUsers, updateAuthUser, validateLogin } from "../src/auth.mjs";
 import { acceptInvitation, approveFromStore, approveSyntheticCalibration, completeCommunityProfile, createMission, createRealSyntheticComparison, createRegisteredParticipant, duplicateMission, loadState, proposeSyntheticCalibration, recordBehaviorEvent, rejectParticipation, rejectSyntheticCalibration, resetState, revertSyntheticCalibration, runSyntheticSimulation, sendInvitations, setRole, setSessionRole, submitMission, updateMissionDetails, updateMissionStatus } from "../src/store.mjs";
-import { LEVELS, analyzeFeedbackQuality, buildParticipantResponseExport, detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, missionExecutionAverage, missionStateActions, missionSummary, participantResponseExportToCsv, summarizeBehaviorEvents } from "../src/domain.mjs";
+import { LEVELS, analyzeFeedbackQuality, buildParticipantResponseExport, detectFatigue, filterEligibleParticipants, levelProgress, matchParticipant, missionAudienceMatches, missionExecutionAverage, missionStateActions, missionSummary, participantResponseExportToCsv, summarizeBehaviorEvents } from "../src/domain.mjs";
 import { percentage } from "../src/synthetic-aggregation.mjs";
 import { cocreaAllyQuestions, cocreaClientQuestions, cocreaCollaboratorQuestions, defaultSyntheticTemplate, summarizeSyntheticSimulation, syntheticDisclaimer } from "../src/synthetic-engine.mjs";
 
@@ -1667,7 +1667,12 @@ function startSession(user) {
 function missionById(id) { return state.missions.find((mission) => mission.id === id); }
 function availableMissions(participant) {
   const invitedMissionIds = new Set(state.invitations.filter((invitation) => invitation.participantId === participant.id && ["pendiente", "aceptada"].includes(invitation.status)).map((invitation) => invitation.missionId));
-  return state.missions.filter((mission) => invitedMissionIds.has(mission.id) && ["activo", "reclutando"].includes(mission.status) && (!mission.audience || mission.audience === "ambos" || mission.audience === `${participant.type}s`));
+  return state.missions.filter((mission) => {
+    const employeeDirectAccess = participant.type === "empleado" && mission.audience === "clientes_y_empleados";
+    return (invitedMissionIds.has(mission.id) || employeeDirectAccess)
+      && ["activo", "reclutando"].includes(mission.status)
+      && missionAudienceMatches(mission.audience, participant.type);
+  });
 }
 function metric(label, value) { return `<div class="metric"><span class="muted">${label}</span><strong>${value}</strong></div>`; }
 function metricCard(label, value, note) { return `<article class="card metric" title="${note}"><span class="metric-label"><span class="muted">${label}</span><button class="metric-help" type="button" aria-label="Ayuda sobre ${label}" title="${note}">?</button></span><strong>${value}</strong><small class="muted">${note}</small></article>`; }
